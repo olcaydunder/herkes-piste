@@ -213,7 +213,7 @@ let tekrarZamanlayici = null;
 let bosZamanlayici = null;
 
 function durumMesaji() {
-  return { t: 'durum', durum, m: durumAciklama, kullanici: KULLANICI, izleyici, simulasyon: SIMULASYON };
+  return { t: 'durum', durum, m: durumAciklama, kullanici: KULLANICI, izleyici, simulasyon: SIMULASYON, surum: SURUM };
 }
 function durumAyarla(yeni, aciklama = '') {
   durum = yeni;

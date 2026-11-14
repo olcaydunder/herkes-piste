@@ -3078,7 +3078,7 @@ function kaydet() {
     const t = zaman();
     const k = [...S.kisiler.values()].filter((r) => r.halayda || S.hediye.has(r.id) || r.takip).sort((a, b) => b.son - a.son).slice(0, 200)
       .map((r) => ({ id: r.id, ad: r.ad, av: r.av, h: r.halayda, ky: Math.round(t - r.katilma), sy: Math.round(t - r.son), tk: r.takip }));
-    localStorage.setItem(KAYIT, JSON.stringify({ z: Date.now(), k, h: [...S.hediye.values()], sv: S.seviye, c: S.cosku, hi: S.hedefIdx, he: S.hedefElmas }));
+    localStorage.setItem(KAYIT, JSON.stringify({ z: Date.now(), k, h: [...S.hediye.values()], sv: S.seviye, c: S.cosku, hi: S.hedefIdx, he: S.hedefElmas, si: S.siraIdx }));
   } catch {}
 }
 function yukle() {
@@ -3097,6 +3097,7 @@ function yukle() {
       r.toplam = h.elmas; r.gozluk = h.elmas >= KOSTUM.gozluk; r.fes = h.elmas >= KOSTUM.fes; r.altin = h.elmas >= KOSTUM.altin;
     }
     S.seviye = v.sv || 1; S.cosku = v.c || 0; S.hedefIdx = v.hi || 0; S.hedefElmas = v.he || 0;
+    if (v.si > 0 && v.si < SIRA.length && !P.get('tur')) { S.siraIdx = v.si; S.devamTur = SIRA[v.si]; }
     S.bas = basHesapla();
   } catch {}
 }
@@ -3115,6 +3116,16 @@ function sunucuyaBaglan() {
       const once = S.durum;
       S.durum = e.durum; S.durumMesaj = e.m || ''; if (e.izleyici) S.izleyici = e.izleyici;
       if (e.kullanici) hesapEl.textContent = `Bağlanacak TikTok hesabı: @${e.kullanici}`;
+      // sunucu yeni sürüme geçtiyse sayfayı yenile (oyun durumu kayıttan geri gelir)
+      if (e.surum) {
+        if (!S.surum) S.surum = e.surum;
+        else if (e.surum !== S.surum && !S.yenileniyor) {
+          S.yenileniyor = true;
+          kaydet();
+          try { if (basladi) sessionStorage.setItem('herkesPiste.yenilendi', '1'); } catch {}
+          setTimeout(() => location.reload(), 1200);
+        }
+      }
       if (once !== 'canli' && S.durum === 'canli') Spiker.ekle('Herkes Piste\'ye hoş geldiniz! Yoruma gir yazan halaya katılıyor.', 4, 'acilis');
     } else olay(e);
   };
@@ -3182,20 +3193,44 @@ async function tamEkran() {
 let basladi = false;
 const tamBtn = document.getElementById('tamEkran');
 function tamBtnGuncelle() { tamBtn.style.display = basladi && !tamEkranMi() ? 'block' : 'none'; }
+// Ses tercihleri hatırlanır; sayfa güncelleme için kendiliğinden yenilenince tek dokunuşla ses geri açılır
+const AYAR = 'herkesPiste.ayar';
+function sesleriAc(davul, spiker) {
+  Ses.baslat(davul, spiker);
+  Spiker.baslat(spiker);
+  Ses.devam();
+  if (spiker && 'speechSynthesis' in window) { try { speechSynthesis.getVoices(); } catch {} }
+}
 document.getElementById('baslat').addEventListener('click', async () => {
   basladi = true;
   document.getElementById('giris').style.display = 'none';
   const davul = document.getElementById('sesKutu').checked;
   const spiker = document.getElementById('spikerKutu').checked;
-  Ses.baslat(davul, spiker);
-  Spiker.baslat(spiker);
-  Ses.devam();
-  if (spiker && 'speechSynthesis' in window) { try { speechSynthesis.getVoices(); } catch {} }
+  try { localStorage.setItem(AYAR, JSON.stringify({ davul, spiker })); } catch {}
+  sesleriAc(davul, spiker);
   await tamEkran();
   uyanikTut();
   tamBtnGuncelle();
   if (DEMO || S.durum === 'canli') Spiker.ekle('Herkes Piste\'ye hoş geldiniz! Yoruma gir yazan halaya katılıyor.', 4, 'acilis');
 });
+const sesAcBtn = document.getElementById('sesAc');
+sesAcBtn.addEventListener('click', async () => {
+  let a = { davul: true, spiker: true };
+  try { a = { ...a, ...JSON.parse(localStorage.getItem(AYAR) || '{}') }; } catch {}
+  sesAcBtn.style.display = 'none';
+  sesleriAc(a.davul, a.spiker);
+  await tamEkran();
+  uyanikTut();
+  tamBtnGuncelle();
+});
+try {
+  if (sessionStorage.getItem('herkesPiste.yenilendi') === '1') {
+    sessionStorage.removeItem('herkesPiste.yenilendi');
+    basladi = true;
+    document.getElementById('giris').style.display = 'none';
+    sesAcBtn.style.display = 'block';
+  }
+} catch {}
 tamBtn.addEventListener('click', async () => { await tamEkran(); tamBtnGuncelle(); });
 document.addEventListener('fullscreenchange', tamBtnGuncelle);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { uyanikTut(); Ses.devam(); tamBtnGuncelle(); } });
@@ -3205,6 +3240,8 @@ window.addEventListener('resize', boyutla);
 boyutla();
 yukle();
 if (DEMO) denemeBaslat(); else sunucuyaBaglan();
+// sayfa yenilendiyse kaldığı oyundan devam eder
+if (S.devamTur && S.devamTur !== 'halay') turBaslat(S.devamTur);
 // ?tur=bilgi gibi bir adresle belli bir oyundan başlanabilir
 if (P.get('tur') && OYUNLAR[P.get('tur')]) {
   const i = SIRA.indexOf(P.get('tur'));
