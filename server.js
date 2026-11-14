@@ -59,7 +59,7 @@ const sunucu = http.createServer((istek, yanit) => {
   const url = new URL(istek.url, 'http://x');
   if (url.pathname === '/saglik') {
     yanit.writeHead(200, { 'content-type': 'application/json' });
-    yanit.end(JSON.stringify({ tamam: true, surum: SURUM, kullanici: KULLANICI, durum, aciklama: durumAciklama, istemci: istemciler.size, ses: sesVarMi(), anahtar: !!API_KEY, sonHata }));
+    yanit.end(JSON.stringify({ tamam: true, surum: SURUM, kullanici: KULLANICI, durum, aciklama: durumAciklama, istemci: istemciler.size, ses: sesVarMi(), anahtar: !!API_KEY, sonHata, sayac, baglantiZamani }));
     return;
   }
   if (url.pathname === '/konus') { konus(url.searchParams.get('m') || '', yanit); return; }
@@ -197,7 +197,14 @@ setInterval(() => {
 function gonder(ws, veri) {
   if (ws.readyState === 1) ws.send(JSON.stringify(veri));
 }
+// Sorun gidermek için: TikTok'tan gelen olayların sayısı ve son zamanı /saglik'te görünür
+const sayac = { yorum: 0, begeni: 0, hediye: 0, takip: 0, paylasim: 0, giris: 0, izleyici: 0, son: null, sonYorum: null };
 function yayinla(veri) {
+  if (sayac[veri.t] !== undefined) {
+    sayac[veri.t]++;
+    sayac.son = new Date().toISOString();
+    if (veri.t === 'yorum') sayac.sonYorum = { zaman: sayac.son, m: String(veri.m).slice(0, 20) };
+  }
   const metin = JSON.stringify(veri);
   for (const ws of istemciler) if (ws.readyState === 1) ws.send(metin);
 }
@@ -207,7 +214,8 @@ let durum = 'bekliyor';   // bekliyor | baglaniyor | canli | kapali | hata
 let durumAciklama = '';
 let izleyici = 0;
 let baglanti = null;
-let sonHata = null;        // son bağlantı hatası (sorun giderme için /saglik'te görünür)
+let sonHata = null;
+let baglantiZamani = null;        // son bağlantı hatası (sorun giderme için /saglik'te görünür)
 let odaBilgisiAtla = false; // oda bilgisi TikTok'tan alınamıyorsa bir sonraki denemede bu adım atlanır
 let tekrarZamanlayici = null;
 let bosZamanlayici = null;
@@ -269,7 +277,10 @@ async function baglan() {
   const c = new TikTokLiveConnection(KULLANICI, secenekler);
   baglanti = c;
 
+  // TikTok'tan gelen ham olayları da say (filtreden önce)
+  c.on('rawData', () => { sayac.ham = (sayac.ham || 0) + 1; });
   c.on(WebcastEvent.CHAT, (d) => {
+    sayac.hamYorum = (sayac.hamYorum || 0) + 1;
     const k = kisi(d.user);
     const m = String(d.comment ?? d.content ?? '').trim();
     if (k && m) yayinla({ t: 'yorum', k, m: m.slice(0, 120) });
@@ -310,6 +321,7 @@ async function baglan() {
     if (baglanti !== c) return;
     izleyici = Number(st?.roomInfo?.user_count ?? st?.roomInfo?.stats?.user_count ?? izleyici) || izleyici;
     sonHata = null;
+    baglantiZamani = new Date().toISOString();
     durumAyarla('canli', `@${KULLANICI} yayınına bağlandı`);
   } catch (e) {
     if (baglanti === c) baglanti = null;
