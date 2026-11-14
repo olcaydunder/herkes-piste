@@ -16,6 +16,18 @@ const PORT = Number(process.env.PORT || 3000);
 const KULLANICI = String(process.env.TIKTOK_KULLANICI || 'herkes.piste').replace(/^@/, '').trim();
 const API_KEY = String(process.env.EULER_API_KEY || '').trim();
 const SIMULASYON = process.env.SIMULASYON === '1';
+const SURUM = (() => {
+  // GitHub'dan çekilen sürümün kısa kimliği (sunucunun güncellenip güncellenmediğini görmek için)
+  try {
+    let h = readFileSync(path.join(KOK, '.git', 'HEAD'), 'utf8').trim();
+    if (h.startsWith('ref: ')) {
+      const ref = h.slice(5);
+      try { h = readFileSync(path.join(KOK, '.git', ref), 'utf8').trim(); }
+      catch { h = (readFileSync(path.join(KOK, '.git', 'packed-refs'), 'utf8').split('\n').find((x) => x.endsWith(' ' + ref)) || '').split(' ')[0]; }
+    }
+    return h.slice(0, 7);
+  } catch { return ''; }
+})();
 const PUBLIC = path.join(KOK, 'public');
 const TTS_DIZIN = process.env.PIPER_DIZIN || '/opt/herkes-piste-tts';
 const PIPER_PY = process.env.PIPER_PY || path.join(TTS_DIZIN, 'venv', 'bin', 'python');
@@ -47,7 +59,7 @@ const sunucu = http.createServer((istek, yanit) => {
   const url = new URL(istek.url, 'http://x');
   if (url.pathname === '/saglik') {
     yanit.writeHead(200, { 'content-type': 'application/json' });
-    yanit.end(JSON.stringify({ tamam: true, kullanici: KULLANICI, durum, istemci: istemciler.size, ses: sesVarMi() }));
+    yanit.end(JSON.stringify({ tamam: true, surum: SURUM, kullanici: KULLANICI, durum, aciklama: durumAciklama, istemci: istemciler.size, ses: sesVarMi(), anahtar: !!API_KEY, sonHata }));
     return;
   }
   if (url.pathname === '/konus') { konus(url.searchParams.get('m') || '', yanit); return; }
@@ -195,6 +207,8 @@ let durum = 'bekliyor';   // bekliyor | baglaniyor | canli | kapali | hata
 let durumAciklama = '';
 let izleyici = 0;
 let baglanti = null;
+let sonHata = null;        // son bağlantı hatası (sorun giderme için /saglik'te görünür)
+let odaBilgisiAtla = false; // oda bilgisi TikTok'tan alınamıyorsa bir sonraki denemede bu adım atlanır
 let tekrarZamanlayici = null;
 let bosZamanlayici = null;
 
@@ -248,7 +262,9 @@ async function baglan() {
     return tekrarDene(120);
   }
   const { TikTokLiveConnection, WebcastEvent, ControlEvent } = kutuphane;
-  const secenekler = { processInitialData: false, enableExtendedGiftInfo: true };
+  // enableExtendedGiftInfo kapalı: hediye listesi imzalı istek ister ve ücretsiz kullanımda bağlantıyı düşürür.
+  // Hediyenin adı ve elmas değeri zaten her hediye mesajının içinde geliyor.
+  const secenekler = { processInitialData: false, enableExtendedGiftInfo: false, fetchRoomInfoOnConnect: !odaBilgisiAtla };
   if (API_KEY) secenekler.signApiKey = API_KEY;
   const c = new TikTokLiveConnection(KULLANICI, secenekler);
   baglanti = c;
@@ -293,12 +309,17 @@ async function baglan() {
     const st = await c.connect();
     if (baglanti !== c) return;
     izleyici = Number(st?.roomInfo?.user_count ?? st?.roomInfo?.stats?.user_count ?? izleyici) || izleyici;
+    sonHata = null;
     durumAyarla('canli', `@${KULLANICI} yayınına bağlandı`);
   } catch (e) {
     if (baglanti === c) baglanti = null;
     try { c.disconnect(); } catch {}
     const ad = e?.constructor?.name || e?.name || '';
     const mesaj = String(e?.message || e || '');
+    const ayrinti = [e?.reason, e?.requestErr?.message, e?.exception?.message, Array.isArray(e?.errors) ? e.errors.map((x) => x?.message).join(' | ') : '']
+      .filter(Boolean).join(' · ');
+    sonHata = { zaman: new Date().toISOString(), ad, mesaj: mesaj.slice(0, 300), ayrinti: String(ayrinti).slice(0, 400), odaBilgisiAtla };
+    log('bağlantı denemesi başarısız:', ad, mesaj.slice(0, 300), ayrinti ? '· ' + String(ayrinti).slice(0, 300) : '');
     if (ad === 'UserOfflineError' || /offline|isn't online|not live|LIVE has ended/i.test(mesaj)) {
       durumAyarla('kapali', 'Yayın kapalı');
       tekrarDene(30);
@@ -312,10 +333,18 @@ async function baglan() {
     } else if (ad === 'InvalidUniqueIdError') {
       durumAyarla('hata', `Kullanıcı adı geçersiz: ${KULLANICI}`);
       tekrarDene(300);
+    } else if (ad === 'PremiumFeatureError') {
+      durumAyarla('hata', 'Bağlantı servisi anahtar istiyor (PremiumFeatureError)');
+      tekrarDene(120);
+    } else if (!odaBilgisiAtla) {
+      // Oda bilgisi adımı sunucu IP'sinden engellenmiş olabilir: bir sonraki denemede bu adımı atla
+      odaBilgisiAtla = true;
+      durumAyarla('baglaniyor', `İkinci yol deneniyor (${ad || 'hata'})`);
+      tekrarDene(5);
     } else {
-      durumAyarla('hata', 'Bağlanılamadı, tekrar denenecek');
-      log('bağlantı hatası:', ad, mesaj.slice(0, 300));
-      tekrarDene(45);
+      odaBilgisiAtla = false;
+      durumAyarla('hata', `Bağlanılamadı (${ad || 'bilinmeyen hata'}), tekrar denenecek`);
+      tekrarDene(30);
     }
   }
 }
