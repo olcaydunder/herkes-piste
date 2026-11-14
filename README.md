@@ -4,29 +4,26 @@ TikTok LIVE için izleyicilerin yönettiği halay, araba yarışı ve halat çek
 
 ## Oyun
 
-Turlar kendiliğinden döner: halay → araba yarışı → halay → halat çekme.
+23 oyun kendiliğinden sırayla döner (her biri 1-1,5 dakika, arada halay). Ekran telefon ve Galaxy Tab S11 Ultra gibi geniş dikey tabletler için ayrı ayarlanır.
 
-**Halay turu (~100 sn)**
-- `GİR` yaz → halaya katıl (robotun adınla sıraya girer), `HOP` → zıpla, `SELAM` → el salla
-- Halaydaki kişinin yorumu robotun üstünde balonda görünür
-- Beğeni → coşku çubuğu dolar, halay hızlanır; takip → isminin yanına yıldız
+**Halay**: `GİR` katıl, `HOP` zıpla, `SELAM` el salla; beğeni coşkuyu doldurur, en çok hediye atan halaybaşı olur.
 
-**Araba yarışı / Halat çekme (~70 sn)**
-- Yarışta `1`, `2`, `3` (Sarı, Mavi, Pembe), halatta `1`, `2` (Sarı, Mavi) yaz → takımını seç
-- Beğeni → gaz / çekiş, yorum → takımına güç
+**Takım oyunları** (`1` Sarı, `2` Mavi, `3` Pembe yazıp takım seçilir; beğeni ve yorum takıma güç verir)
+- Araba yarışı, Balon şişirme, Kule yarışı, Roket yarışı (önce bitiren kazanır)
+- Boyama yarışı (en çok kare), Basket atışı (en çok sayı)
+- Halat çekme, Yağlı güreş, Futbol (en çok gol), Kartopu savaşı (rakibin duvarını ilk yıkan)
 
-**Hediye menüsü** (ekranda yazar; tek seferdeki elmas değerine göre)
+**Bilgi oyunları** (cevap yoruma yazılır; ilk bilen 3 puan, turun birincisi ilan edilir)
+- Bilgi yarışması ve Bayrak bil (A/B/C), Doğru mu yanlış mı (D/Y)
+- Kelime avı, Atasözü tamamla, Hızlı matematik, Renk tuzağı, Kaç tane?, Hafıza oyunu, Hızlı yazma
 
-| Elmas | Halay | Araba yarışı | Halat çekme |
-|---|---|---|---|
-| 1+ | Kalp yağmuru | Gaz | Çek |
-| 5+ | Gözlük takar | Turbo | Güçlü çekiş |
-| 20+ | Fes + davul zurna | Nitro | Süper çekiş |
-| 99+ | Altın robot, herkes zıplar | Muz kabuğu (rakipler kayar) | Rakip kayar |
-| 199+ | Dev robot (20 sn) | Roket | Dev yardımcı |
-| 500+ | Halay şöleni | Şimşek (rakipler durur) | Deprem |
+**Topluluk oyunları**
+- Memleket yarışı: plaka ya da şehir adı yazılır, en kalabalık memleket kazanır
+- Büyük oylama: "Çay mı, kahve mi?" gibi sorulara 1 ya da 2 yazılır
 
-En çok hediye atan halaybaşı olur, mendil onda. Herkesin birlikte doldurduğu elmas hedefi tamamlanınca 30 saniye bütün robotlar altın olur.
+**Hediye menüsü**: her oyunun ekranında 6 kademe yazar (1+, 5+, 20+, 99+, 199+, 500+ elmas). Takım oyunlarında turbo, nitro, rakibi kaydırma gibi etkiler; bilgi oyunlarında herkese ipucu, ek süre, çift puan; halayda gözlük, fes, altın ve dev robot. Hediye atan kişi kendine puan almaz. Herkesin birlikte doldurduğu elmas hedefi tamamlanınca 30 saniye bütün robotlar altın olur.
+
+Belli bir oyunla başlamak için adresin sonuna `?tur=bilgi` gibi oyunun adı yazılır; sırayı değiştirmek için `?sira=halay,yaris,bilgi`.
 
 Para ya da ödül dağıtılmaz; oyun yalnızca eğlence ve sıralama içindir.
 
