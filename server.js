@@ -1,7 +1,10 @@
 // Herkes Piste — oyun sunucusu
 // TikTok LIVE yayınındaki yorum, beğeni ve hediyeleri okur, oyun sayfasına WebSocket ile aktarır.
 import http from 'node:http';
-import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
@@ -14,6 +17,11 @@ const KULLANICI = String(process.env.TIKTOK_KULLANICI || 'herkes.piste').replace
 const API_KEY = String(process.env.EULER_API_KEY || '').trim();
 const SIMULASYON = process.env.SIMULASYON === '1';
 const PUBLIC = path.join(KOK, 'public');
+const TTS_DIZIN = process.env.PIPER_DIZIN || '/opt/herkes-piste-tts';
+const PIPER_PY = process.env.PIPER_PY || path.join(TTS_DIZIN, 'venv', 'bin', 'python');
+const PIPER_MODEL = process.env.PIPER_MODEL || path.join(TTS_DIZIN, 'tr_TR-dfki-medium.onnx');
+const PIPER_ISCI = process.env.PIPER_ISCI || path.join(KOK, 'tts', 'piper_isci.py');
+const SES_DIZIN = path.join(process.env.CACHE_DIRECTORY || os.tmpdir(), 'herkes-piste-ses');
 
 function envYukle(dosya) {
   let icerik = '';
@@ -39,9 +47,10 @@ const sunucu = http.createServer((istek, yanit) => {
   const url = new URL(istek.url, 'http://x');
   if (url.pathname === '/saglik') {
     yanit.writeHead(200, { 'content-type': 'application/json' });
-    yanit.end(JSON.stringify({ tamam: true, kullanici: KULLANICI, durum, istemci: istemciler.size }));
+    yanit.end(JSON.stringify({ tamam: true, kullanici: KULLANICI, durum, istemci: istemciler.size, ses: sesVarMi() }));
     return;
   }
+  if (url.pathname === '/konus') { konus(url.searchParams.get('m') || '', yanit); return; }
   let yol = decodeURIComponent(url.pathname);
   if (yol === '/' || yol === '') yol = '/index.html';
   const dosya = path.normalize(path.join(PUBLIC, yol));
@@ -55,6 +64,101 @@ const sunucu = http.createServer((istek, yanit) => {
   yanit.writeHead(200, { 'content-type': TURLER[uzanti] || 'application/octet-stream', 'cache-control': onbellek });
   createReadStream(dosya).pipe(yanit);
 });
+
+// ---------------------------------------------------------------- yapay zekâ sunucunun sesi (Piper, Türkçe)
+// Python işçisi sesi bir kez yükler; cümleler sırayla seslendirilir ve önbelleğe yazılır.
+const ses = { isci: null, hazir: null, sira: 1, bekleyen: new Map(), zincir: Promise.resolve(), kuyruk: 0, araVer: 0 };
+
+function sesVarMi() {
+  return existsSync(PIPER_PY) && existsSync(PIPER_MODEL) && existsSync(PIPER_MODEL + '.json') && existsSync(PIPER_ISCI);
+}
+
+function isciBaslat() {
+  if (ses.isci) return ses.hazir;
+  const p = spawn(PIPER_PY, [PIPER_ISCI, PIPER_MODEL], {
+    cwd: os.tmpdir(), stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, PYTHONDONTWRITEBYTECODE: '1', PYTHONUNBUFFERED: '1' },
+  });
+  ses.isci = p;
+  let tampon = '', yuklendi = false;
+  ses.hazir = new Promise((hazir, hata) => {
+    const zaman = setTimeout(() => { hata(new Error('ses yüklenemedi')); isciDurdur(); }, 90000);
+    p.stdout.on('data', (parca) => {
+      tampon += parca;
+      let i;
+      while ((i = tampon.indexOf('\n')) >= 0) {
+        const satir = tampon.slice(0, i); tampon = tampon.slice(i + 1);
+        let v; try { v = JSON.parse(satir); } catch { continue; }
+        if (v.hazir) { yuklendi = true; clearTimeout(zaman); hazir(); log('ses hazır'); continue; }
+        const b = ses.bekleyen.get(v.id);
+        if (b) { ses.bekleyen.delete(v.id); v.ok ? b.tamam() : b.hata(new Error(v.hata || 'seslendirilemedi')); }
+      }
+    });
+    p.on('exit', (kod) => {
+      clearTimeout(zaman);
+      if (ses.isci === p) { ses.isci = null; ses.hazir = null; }
+      if (!yuklendi) ses.araVer = Date.now() + 5 * 60000; // ses açılamadıysa 5 dakika tarayıcı sesi kullanılsın
+      for (const b of ses.bekleyen.values()) b.hata(new Error('ses işçisi kapandı'));
+      ses.bekleyen.clear();
+      hata(new Error('ses işçisi kapandı: ' + kod));
+    });
+  });
+  ses.hazir.catch(() => {});
+  p.on('error', (e) => log('ses işçisi başlatılamadı:', e.message));
+  p.stderr.on('data', (d) => { const m = String(d).trim(); if (m && !/warn/i.test(m)) log('ses:', m.slice(0, 200)); });
+  p.stdin.on('error', () => {});
+  return ses.hazir;
+}
+function isciDurdur() {
+  const p = ses.isci;
+  ses.isci = null; ses.hazir = null;
+  if (p) try { p.kill('SIGKILL'); } catch {}
+}
+
+async function seslendir(metin, hedef) {
+  await isciBaslat();
+  const p = ses.isci;
+  if (!p) throw new Error('ses işçisi yok');
+  const id = ses.sira++;
+  await new Promise((tamam, hata) => {
+    const zaman = setTimeout(() => { ses.bekleyen.delete(id); hata(new Error('zaman aşımı')); if (ses.isci === p) isciDurdur(); }, 20000);
+    ses.bekleyen.set(id, { tamam: () => { clearTimeout(zaman); tamam(); }, hata: (e) => { clearTimeout(zaman); hata(e); } });
+    p.stdin.write(JSON.stringify({ id, metin, cikis: hedef }) + '\n');
+  });
+}
+
+function konus(ham, yanit) {
+  const metin = String(ham).normalize('NFC').replace(/[\u0000-\u001f\u007f<>{}\[\]\\|^~`]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 220);
+  if (!metin) { yanit.writeHead(400); yanit.end(); return; }
+  if (!sesVarMi() || Date.now() < ses.araVer) { yanit.writeHead(503, { 'content-type': 'text/plain; charset=utf-8' }); yanit.end('Ses kurulu değil'); return; }
+  const dosya = path.join(SES_DIZIN, createHash('sha1').update(PIPER_MODEL + '|' + metin).digest('hex') + '.wav');
+  const gonderDosya = () => {
+    yanit.writeHead(200, { 'content-type': 'audio/wav', 'cache-control': 'private, max-age=86400' });
+    createReadStream(dosya).pipe(yanit);
+  };
+  if (existsSync(dosya)) { gonderDosya(); return; }
+  if (ses.kuyruk >= 6) { yanit.writeHead(429); yanit.end(); return; }
+  ses.kuyruk++;
+  const is = ses.zincir.then(async () => {
+    if (yanit.destroyed) return;
+    if (!existsSync(dosya)) { mkdirSync(SES_DIZIN, { recursive: true }); await seslendir(metin, dosya); }
+  });
+  ses.zincir = is.catch(() => {});
+  is.then(() => { if (!yanit.destroyed) gonderDosya(); })
+    .catch((e) => { log('seslendirme hatası:', e.message); if (!yanit.headersSent) { yanit.writeHead(500); yanit.end(); } })
+    .finally(() => { ses.kuyruk--; });
+}
+
+// Önbellekte 3 günden eski sesleri sil
+setInterval(() => {
+  try {
+    const sinir = Date.now() - 3 * 86400000;
+    for (const ad of readdirSync(SES_DIZIN)) {
+      const d = path.join(SES_DIZIN, ad);
+      if (statSync(d).mtimeMs < sinir) unlinkSync(d);
+    }
+  } catch {}
+}, 3600000).unref();
 
 // ---------------------------------------------------------------- oyun sayfaları (WebSocket)
 const istemciler = new Set();
@@ -272,7 +376,8 @@ function simulasyonBaslat() {
     if (r < 0.35) yayinla({ t: 'yorum', k, m: ['gir', 'hop', '1', '2', '3', 'selam'][Math.floor(Math.random() * 6)] });
     else if (r < 0.85) yayinla({ t: 'begeni', k, n: 1 + Math.floor(Math.random() * 12) });
     else if (r < 0.95) yayinla({ t: 'hediye', k, ad: 'Gül', elmas: 1, adet: 1, birim: 1 });
-    else yayinla({ t: 'hediye', k, ad: 'Parmak kalp', elmas: 99, adet: 1, birim: 99 });
+    else if (r < 0.98) yayinla({ t: 'hediye', k, ad: 'Parmak kalp', elmas: 5, adet: 1, birim: 5 });
+    else yayinla({ t: 'hediye', k, ad: 'Kalpli mektup', elmas: 99, adet: 1, birim: 99 });
   }, 350);
 }
 function simulasyonDurdur() {
@@ -280,6 +385,6 @@ function simulasyonDurdur() {
   simZamanlayici = null;
 }
 
-sunucu.listen(PORT, () => log(`Herkes Piste sunucusu :${PORT} — @${KULLANICI}${SIMULASYON ? ' (simülasyon)' : ''}`));
+sunucu.listen(PORT, () => log(`Herkes Piste sunucusu :${PORT} — @${KULLANICI}${SIMULASYON ? ' (simülasyon)' : ''} — ses: ${sesVarMi() ? 'hazır' : 'kurulu değil'}`));
 
 export { hediyeCoz, kisi };

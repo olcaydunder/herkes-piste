@@ -22,8 +22,10 @@ canvas{display:block;position:fixed;inset:0}
 #giris ol b{color:#FFD23F}
 #baslat{appearance:none;border:0;border-radius:999px;background:#FFD23F;color:#1B1040;font:800 30px 'Baloo 2',system-ui,sans-serif;padding:16px 56px 12px;box-shadow:0 8px 0 #F5A70C;cursor:pointer}
 #baslat:active{transform:translateY(4px);box-shadow:0 4px 0 #F5A70C}
-#sesSatir{display:flex;align-items:center;gap:10px;font-weight:600;font-size:19px}
-#sesSatir input{width:24px;height:24px;accent-color:#FFD23F}
+#secenekler{display:flex;flex-direction:column;gap:10px}
+.satir{display:flex;align-items:center;gap:10px;font-weight:600;font-size:19px}
+.satir input{width:24px;height:24px;accent-color:#FFD23F}
+#hesap{margin:0;font-weight:600;font-size:17px;color:#9C8FD9}
 #tamEkran{position:fixed;right:10px;bottom:10px;width:46px;height:46px;border-radius:12px;border:0;background:rgba(27,16,64,.55);color:#fff;font:800 22px system-ui;display:none;z-index:4;cursor:pointer}
 </style>
 </head>
@@ -38,7 +40,11 @@ canvas{display:block;position:fixed;inset:0}
     <li>TikTok'u aç: <b>+</b> → <b>CANLI</b> → <b>Mobil oyun</b> → <b>Canlı yayına başla</b>, ekran paylaşımına izin ver.</li>
     <li>Chrome'a geri dön. Oyun yayına birkaç saniyede kendiliğinden bağlanır.</li>
   </ol>
-  <label id="sesSatir"><input type="checkbox" id="sesKutu" checked> Davul sesi açık</label>
+  <div id="secenekler">
+    <label class="satir"><input type="checkbox" id="spikerKutu" checked> Yapay zekâ sunucu konuşsun</label>
+    <label class="satir"><input type="checkbox" id="sesKutu" checked> Davul sesi açık</label>
+  </div>
+  <p id="hesap">Sunucuya bağlanılıyor…</p>
   <button id="baslat" type="button">BAŞLAT</button>
 </div>
 <script src="/oyun.js"></script>

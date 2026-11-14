@@ -53,6 +53,9 @@ if [ ! -f "$DIZIN/.env" ]; then
 fi
 chmod 600 "$DIZIN/.env"
 
+say "Yapay zekâ sunucunun Türkçe sesi kuruluyor"
+bash "$DIZIN/tts-kur.sh" || say "Ses şimdi kurulamadı; sunucu yarım saat içinde kendisi tekrar deneyecek"
+
 say "Servis kuruluyor"
 cat > /etc/systemd/system/herkes-piste.service <<EOF
 [Unit]
