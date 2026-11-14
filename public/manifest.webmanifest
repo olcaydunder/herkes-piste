@@ -1,0 +1,16 @@
+{
+  "name": "Herkes Piste",
+  "short_name": "Herkes Piste",
+  "description": "TikTok LIVE için izleyicilerin yönettiği halay ve araba yarışı oyunu",
+  "lang": "tr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#1B1040",
+  "theme_color": "#4A22D4",
+  "icons": [
+    { "src": "/ikon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/ikon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
