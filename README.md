@@ -4,26 +4,32 @@ TikTok LIVE için izleyicilerin yönettiği halay, araba yarışı ve halat çek
 
 ## Oyun
 
-23 oyun kendiliğinden sırayla döner (her biri 1-1,5 dakika, arada halay). Ekran telefon ve Galaxy Tab S11 Ultra gibi geniş dikey tabletler için ayrı ayarlanır.
+50 oyun kendiliğinden sırayla döner (her biri 1-1,5 dakika, her 6 oyunda bir halay). Karakterler insan: her izleyicinin kendine özgü, her yayında aynı kalan görünümü var (ten, saç, bıyık, yazma); halayda yöresel kıyafet, takım oyunlarında takım rengi. Ekran telefon ve Galaxy Tab S11 Ultra gibi geniş dikey tabletler için ayrı ayarlanır.
 
 **Halay**: `GİR` katıl, `HOP` zıpla, `SELAM` el salla; beğeni coşkuyu doldurur, en çok hediye atan halaybaşı olur.
 
-**Takım oyunları** (`1` Sarı, `2` Mavi, `3` Pembe yazıp takım seçilir; beğeni ve yorum takıma güç verir)
-- Araba yarışı, Balon şişirme, Kule yarışı, Roket yarışı (önce bitiren kazanır)
-- Boyama yarışı (en çok kare), Basket atışı (en çok sayı)
-- Halat çekme, Yağlı güreş, Futbol (en çok gol), Kartopu savaşı (rakibin duvarını ilk yıkan)
+**Takım oyunları (13)** — `1` Sarı, `2` Mavi, `3` Pembe yazıp takım seçilir; beğeni ve yorum takıma güç verir:
+araba yarışı, balon şişirme, kule, roket, kayık yarışı, duvar tırmanışı, boyama, basket atışı, halat çekme, yağlı güreş, futbol, kartopu savaşı, dans düellosu.
 
-**Bilgi oyunları** (cevap yoruma yazılır; ilk bilen 3 puan, turun birincisi ilan edilir)
-- Bilgi yarışması ve Bayrak bil (A/B/C), Doğru mu yanlış mı (D/Y)
-- Kelime avı, Atasözü tamamla, Hızlı matematik, Renk tuzağı, Kaç tane?, Hafıza oyunu, Hızlı yazma
+**Bilgi yarışmaları (34)** — cevap yoruma yazılır, ilk bilen 3 puan alır, turun birincisi ilan edilir:
+- Şıklı (A/B/C): bilgi, tarih, coğrafya, bilim, hayvanlar alemi, spor, uzay, Türk mutfağı, İngilizce kelime, deyimler, doğru yazım, eş ve zıt anlamlılar, farklı olanı bul, başkentler, Türkiye'yi tanı, en'ler, plaka bil, hangi bölgede, bayrak bil, saat kaç, en çok hangisi, doğru mu yanlış mı (D/Y)
+- Yazarak: kelime avı, eksik harf, tersten oku, atasözü tamamla, isim şehir, hızlı matematik, sayı dizisi, renk tuzağı, kaç tane, hafıza oyunu, hızlı yazma
 
-**Topluluk oyunları**
-- Memleket yarışı: plaka ya da şehir adı yazılır, en kalabalık memleket kazanır
-- Büyük oylama: "Çay mı, kahve mi?" gibi sorulara 1 ya da 2 yazılır
+**Topluluk**: memleket yarışı (plaka ya da şehir adı), büyük oylama (1 ya da 2).
 
-**Hediye menüsü**: her oyunun ekranında 6 kademe yazar (1+, 5+, 20+, 99+, 199+, 500+ elmas). Takım oyunlarında turbo, nitro, rakibi kaydırma gibi etkiler; bilgi oyunlarında herkese ipucu, ek süre, çift puan; halayda gözlük, fes, altın ve dev robot. Hediye atan kişi kendine puan almaz. Herkesin birlikte doldurduğu elmas hedefi tamamlanınca 30 saniye bütün robotlar altın olur.
+Soru bankaları `public/sorular.js` dosyasındadır.
 
-Belli bir oyunla başlamak için adresin sonuna `?tur=bilgi` gibi oyunun adı yazılır; sırayı değiştirmek için `?sira=halay,yaris,bilgi`.
+**İzleyiciyi bağlayan sistem**
+- Seviye: yorum, beğeni, doğru cevap, takım zaferi, takip, paylaşım ve hediye seviye puanı kazandırır; seviye adın yanında yazar ve yayından yayına kalır (oyunun açık olduğu cihazda saklanır).
+- Günlük seri: üst üste gelen izleyici adıyla karşılanır ("3 gündür buradasın").
+- Bugünün en iyileri: halay sırasında gün içinde en çok puan toplayanlar gösterilir.
+- Altın tur: her 6 oyunda bir puanlar ve seviye puanı iki kat; bir önceki turda duyurulur.
+- Beğeni hedefi ve elmas hedefi çubukları, davet kralı (en çok paylaşan), dönen çağrı yazıları ve yapay zekâ sunucunun paylaşma, takip ve beğeniye çağırması.
+- Hediye atan kişinin fotoğrafı ve adı büyük gösterilir, destekçilere adlarıyla teşekkür edilir. Sunucu hediye istemez (TikTok kuralı); yalnızca hediyenin oyunda ne yaptığını anlatır.
+
+**Hediye menüsü**: her oyunun ekranında 6 kademe yazar (1+, 5+, 20+, 99+, 199+, 500+ elmas). Takım oyunlarında turbo, nitro, rakibi kaydırma gibi etkiler; bilgi oyunlarında herkese ipucu, ek süre, çift puan; halayda gözlük, fes, altın ve dev karakter. Hediye atan kişi kendine puan almaz.
+
+Belli bir oyunla başlamak için adresin sonuna `?tur=tarih` gibi oyunun adı yazılır; sırayı değiştirmek için `?sira=halay,yaris,bilgi`.
 
 Para ya da ödül dağıtılmaz; oyun yalnızca eğlence ve sıralama içindir.
 
