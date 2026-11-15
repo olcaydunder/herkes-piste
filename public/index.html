@@ -27,13 +27,15 @@ canvas{display:block;position:fixed;inset:0}
 .satir input{width:24px;height:24px;accent-color:#FFD23F}
 #hesap{margin:0;font-weight:600;font-size:17px;color:#9C8FD9}
 #sesAc{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);white-space:nowrap;border:0;border-radius:999px;background:#FFD23F;color:#1B1040;font:800 24px 'Baloo 2',system-ui,sans-serif;padding:12px 30px 8px;box-shadow:0 6px 0 #F5A70C;display:none;z-index:6;cursor:pointer}
+#kur{position:fixed;left:50%;bottom:86px;transform:translateX(-50%);white-space:nowrap;border:0;border-radius:999px;background:#3FE0EA;color:#1B1040;font:800 20px 'Baloo 2',system-ui,sans-serif;padding:10px 24px 6px;box-shadow:0 5px 0 #12AFCB;display:none;z-index:6;cursor:pointer}
 #tamEkran{position:fixed;right:10px;bottom:10px;width:46px;height:46px;border-radius:12px;border:0;background:rgba(27,16,64,.55);color:#fff;font:800 22px system-ui;display:none;z-index:4;cursor:pointer}
 </style>
 </head>
 <body>
 <canvas id="oyun" aria-label="Herkes Piste oyun ekranı"></canvas>
 <button id="tamEkran" type="button" aria-label="Tam ekrana geç">⤢</button>
-<button id="sesAc" type="button">Sesi açmak için dokun</button>
+<button id="sesAc" type="button">Sesi açmak için ekrana bir kez dokun</button>
+<button id="kur" type="button">Ana ekrana ekle: ses hep kendiliğinden açılsın</button>
 <div id="giris">
   <img src="/profil.png" alt="">
   <h1>HERKES PİSTE</h1>
@@ -49,7 +51,40 @@ canvas{display:block;position:fixed;inset:0}
   <p id="hesap">Sunucuya bağlanılıyor…</p>
   <button id="baslat" type="button">BAŞLAT</button>
 </div>
-<script src="/sorular.js"></script>
-<script src="/oyun.js"></script>
+<script>
+/* Kalıcı kabuk: ses bağlamını tutar, oyun kodunu yükler. Sunucu güncellenince sayfa yenilenmeden
+   yalnızca oyun kodu değişir; böylece ses açık kalır ve ekrana dokunmak gerekmez. */
+(function () {
+  var HP = window.HP = window.HP || {};
+  HP.kabukSurumu = 1;
+  HP.ac = null;
+  HP.sesBaglami = function () {
+    if (!HP.ac) { try { HP.ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { HP.ac = null; } }
+    return HP.ac;
+  };
+  function dokun() {
+    if (HP.ac && HP.ac.state !== 'running') { try { HP.ac.resume(); } catch (e) {} }
+    if (HP.dokununca) { try { HP.dokununca(); } catch (e) {} }
+  }
+  ['pointerdown', 'touchend', 'keydown'].forEach(function (ad) { document.addEventListener(ad, dokun, { capture: true, passive: true }); });
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); HP.kurulum = e; if (HP.kurulumHazir) HP.kurulumHazir(); });
+  if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register('/sw.js').catch(function () {}); } catch (e) {} }
+  function betik(src, sonra) {
+    var b = document.createElement('script');
+    b.src = src; b.dataset.oyun = '1';
+    b.onload = sonra;
+    b.onerror = function () { b.remove(); setTimeout(function () { betik(src, sonra); }, 3000); };
+    document.body.appendChild(b);
+  }
+  function yukle(v) { betik('/sorular.js?v=' + v, function () { betik('/oyun.js?v=' + v); }); }
+  HP.yenile = function (surum) {
+    if (HP.kapat) { try { HP.kapat(); } catch (e) {} HP.kapat = null; }
+    var eski = document.querySelectorAll('script[data-oyun]');
+    for (var i = 0; i < eski.length; i++) eski[i].remove();
+    yukle(surum);
+  };
+  yukle(Date.now().toString(36));
+})();
+</script>
 </body>
 </html>

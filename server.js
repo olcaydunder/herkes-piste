@@ -29,6 +29,8 @@ const SURUM = (() => {
   } catch { return ''; }
 })();
 const PUBLIC = path.join(KOK, 'public');
+// Sayfanın kabuğu (index.html) değişmediyse istemci yenilenmeden yalnızca oyun kodunu değiştirir
+const KABUK = (() => { try { return createHash('sha1').update(readFileSync(path.join(PUBLIC, 'index.html'))).digest('hex').slice(0, 10); } catch { return ''; } })();
 const TTS_DIZIN = process.env.PIPER_DIZIN || '/opt/herkes-piste-tts';
 const PIPER_PY = process.env.PIPER_PY || path.join(TTS_DIZIN, 'venv', 'bin', 'python');
 const PIPER_MODEL = process.env.PIPER_MODEL || path.join(TTS_DIZIN, 'tr_TR-dfki-medium.onnx');
@@ -59,7 +61,7 @@ const sunucu = http.createServer((istek, yanit) => {
   const url = new URL(istek.url, 'http://x');
   if (url.pathname === '/saglik') {
     yanit.writeHead(200, { 'content-type': 'application/json' });
-    yanit.end(JSON.stringify({ tamam: true, surum: SURUM, kullanici: KULLANICI, durum, aciklama: durumAciklama, istemci: istemciler.size, ses: sesVarMi(), anahtar: !!API_KEY, sonHata, sayac, baglantiZamani }));
+    yanit.end(JSON.stringify({ tamam: true, surum: SURUM, kabuk: KABUK, kullanici: KULLANICI, durum, aciklama: durumAciklama, istemci: istemciler.size, ses: sesVarMi(), anahtar: !!API_KEY, sonHata, sayac, baglantiZamani }));
     return;
   }
   if (url.pathname === '/konus') { konus(url.searchParams.get('m') || '', yanit); return; }
@@ -221,7 +223,7 @@ let tekrarZamanlayici = null;
 let bosZamanlayici = null;
 
 function durumMesaji() {
-  return { t: 'durum', durum, m: durumAciklama, kullanici: KULLANICI, izleyici, simulasyon: SIMULASYON, surum: SURUM };
+  return { t: 'durum', durum, m: durumAciklama, kullanici: KULLANICI, izleyici, simulasyon: SIMULASYON, surum: SURUM, kabuk: KABUK };
 }
 function durumAyarla(yeni, aciklama = '') {
   durum = yeni;
