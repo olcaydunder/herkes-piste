@@ -29,8 +29,8 @@ const ALTIN = { ana: '#FFC93C', koyu: '#B97D06' };
 const TAKIM3 = [{ no: 1, ad: 'SARI', renk: RENKLER[0] }, { no: 2, ad: 'MAVİ', renk: RENKLER[1] }, { no: 3, ad: 'PEMBE', renk: RENKLER[2] }];
 const TAKIM2 = TAKIM3.slice(0, 2);
 const sayiAyar = (ad, varsayilan) => { const v = Number(P.get(ad)); return v > 0 ? v : varsayilan; };
-// halay 10 dakika, diğer her oyun toplam 4 dakika (takım oyunları bu sürede birkaç tur oynanır)
-const SURE = { halay: sayiAyar('halay', 600), secim: 15, sayim: 3, oyun: sayiAyar('oyun', 45), sonuc: 8, toplam: sayiAyar('toplam', 240), ara: 5 };
+// halay da diğer oyunlar da 4 dakika (takım oyunları bu sürede birkaç tur oynanır)
+const SURE = { halay: sayiAyar('halay', 240), secim: 15, sayim: 3, oyun: sayiAyar('oyun', 45), sonuc: 8, toplam: sayiAyar('toplam', 240), ara: 5 };
 // Turlar bu sırayla kendiliğinden döner (?sira=yaris,bilgi gibi bir adresle değiştirilebilir)
 const SIRA = (P.get('sira') || 'halay,yaris,bilgi,kelime,konvoy,cumhuriyet,bayrak,halay,halat,dugun,matematik,memleket,evcil,emoji,halay,balon,cografya,efsane,at,atasozu,meshur,halay,kule,ingilizce,sayilarla,gures,dunyamutfagi,renk,halay,bisiklet,tarih,hafiza,dugunanket,deyim,plaka,halay,roket,uzay,alfabe,yuzme,icat,kactane,halay,futbol,osmanli,carpim,bumusumu,yazim,hayvan,halay,tren,bilim,eksikharf,boya,kita,dogruyanlis,halay,pasta,spor,romen,basket,yapilar,tersten,halay,kayak,muzik,harfsay,encok,baskent,anket,halay,kartopu,vucut,zaman,ucurtma,esanlam,eskikelime,halay,bilek,deniz,hece,kayik,para,saat,halay,voleybol,edebiyat,dizi,zitanlam,sayidy,almanca,halay,tirmanma,dunyatarihi,paraustu,susavasi,turkiye,isimsehir,halay,dans,teknoloji,yuzde,havaifisek,bolge,hayvanses,halay,mutfak,kisaltma,hangisibuyuk,farkli,meslek,ingilizce2,halay,bitki,enler,yazma')
   .split(',').map((x) => x.trim()).filter(Boolean);
@@ -1132,6 +1132,17 @@ function rolAta(r, rol) {
   }
   return true;
 }
+// "doğum günüm" yazan izleyici günde bir kez kutlanır
+function dogumGunu(r) {
+  const t = zaman(), o = oyuncu(r);
+  if (o.dg === gunYazi() || t - (S.sonDogumGunu || -99) < 15) return;
+  o.dg = gunYazi(); S.sonDogumGunu = t;
+  S.afisKisi = { r, t };
+  duyuru('İYİ Kİ DOĞDUN!', r.ad, PEMBE, 3.4, 4);
+  konfeti(220); havaiFisek(4); Ses.zafer(); ziplat(r); xpEkle(r, 10);
+  if (S.tur === 'halay') halayaKat(r, true);
+  Spiker.ekle(`İyi ki doğdun ${okunurAd(r.ad)}! Nice mutlu yıllara! Hadi herkes onun için ekrana dokunsun, beğeni yağmuru yapalım!`, 4, 'dogum');
+}
 function gelinDamat() {
   let gelin = null, damat = null;
   for (const k of S.kisiler.values()) {
@@ -1178,8 +1189,9 @@ function etkinlikBaslat() {
 }
 function etkinlikBitir() {
   const e = S.etk;
-  S.etk = null; S.sonrakiEtk = zaman() + 50;
+  S.etk = null; S.sonrakiEtk = zaman() + 35;
   if (!e) return;
+  if (e.tip === 'secim') { oyunSecimiBitir(e); return; }
   if (e.tip === 'kostum') Spiker.ekle(e.sayac ? `${e.sayac} kişi kostüm giydi, harikasınız! İstediğiniz zaman yeniden değiştirebilirsiniz.` : 'Kostüm seçmek için istediğin zaman yoruma gelin, damat ya da hamam böceği yazabilirsin!', 2, 'etkinlik-son');
   else if (e.tip === 'hop' && !e.tamam) Spiker.ekle(`Hop dalgası bitti! ${e.sayac} hop geldi, bir dahakine hedefi tutturalım!`, 2, 'etkinlik-son');
   else if (e.tip === 'dugun') { const { gelin, damat } = gelinDamat(); if (gelin || damat) Spiker.ekle('Gelinle damada mutluluklar! Halay devam ediyor!', 2, 'etkinlik-son'); }
@@ -1187,6 +1199,30 @@ function etkinlikBitir() {
     const en = [...e.sehir.entries()].sort((a, b) => b[1] - a[1])[0];
     if (en) { duyuru(buyuk(en[0]), 'en kalabalık memleket', CAMGOBEGI, 2.4, 1); Spiker.ekle(`En kalabalık memleket ${en[0]}! Tüm memleketlere selam olsun!`, 2, 'etkinlik-son'); }
   } else if (e.tip === 'paylas') Spiker.ekle(e.sayac ? `${e.sayac} paylaşım geldi, teşekkürler! Yeni gelenler gir yazsın!` : 'Paylaşmayı unutmayın, birlikte daha eğlenceli!', 2, 'etkinlik-son');
+}
+// Sıradaki oyunu izleyiciler seçer: sıradaki üç oyundan en çok oy alan hemen başlar
+function oyunSecimiBaslat() {
+  S.oySecimi = true;
+  const t = zaman(), i = S.siraIdx;
+  const adaylar = [];
+  for (let k = 1; k <= 6 && adaylar.length < 3; k++) { const j = (i + k) % SIRA.length; if (SIRA[j] !== 'halay' && OYUNLAR[SIRA[j]]) adaylar.push(j); }
+  if (adaylar.length < 2) return;
+  S.etk = { tip: 'secim', basla: t, bitis: t + 32, adaylar, oylar: adaylar.map(() => 0), oy: new Map(), sayac: 0, kisiler: new Set(), sehir: new Map(), selamlanan: new Set(), tamam: false, sonSelam: 0 };
+  const adlar = adaylar.map((j) => OYUNLAR[SIRA[j]].kisa);
+  duyuru('SIRADAKİ OYUNU SEÇ!', adaylar.map((j, n) => `${n + 1}: ${OYUNLAR[SIRA[j]].baslik}`).join(' · '), SARI, 3.2, 2);
+  Spiker.ekle(`Sıradaki oyunu siz seçiyorsunuz! ${adlar.map((a, n) => `${n + 1}, ${a}`).join('. ')}. Numarasını yoruma yaz!`, 3, 'etkinlik');
+}
+function oyunSecimiBitir(e) {
+  const top = e.oylar.reduce((a, b) => a + b, 0);
+  let kazanan = 0;
+  e.oylar.forEach((v, n) => { if (v > e.oylar[kazanan]) kazanan = n; });
+  const hedef = e.adaylar[0], secilen = e.adaylar[kazanan];
+  // seçilen oyun sırada öne alınır, diğerleri kaybolmaz
+  if (secilen !== hedef) [SIRA[hedef], SIRA[secilen]] = [SIRA[secilen], SIRA[hedef]];
+  const def = OYUNLAR[SIRA[hedef]];
+  duyuru(def.baslik, top ? `sıradaki oyun · ${e.oylar[kazanan]} oy` : 'sıradaki oyun', SARI, 3, 2);
+  Spiker.ekle(top ? `Oylama bitti! Sıradaki oyunu siz seçtiniz: ${def.kisa}! Hazır olun!` : `Sıradaki oyun ${def.kisa}! Hazır olun!`, 3, 'etkinlik-son');
+  if (top) konfeti(90);
 }
 function dalga() {
   const t = zaman();
@@ -1197,6 +1233,17 @@ function dalga() {
 function etkinlikYorum(r, w) {
   const e = S.etk, t = zaman();
   if (!e) return;
+  if (e.tip === 'secim') {
+    const v = w.find((x) => /^[1-3]$/.test(x));
+    if (!v || Number(v) > e.adaylar.length) return;
+    const n = Number(v) - 1, eski = e.oy.get(r.id);
+    if (eski === n) return;
+    if (eski !== undefined) e.oylar[eski]--;
+    else { xpEkle(r, 1); e.sayac++; }
+    e.oy.set(r.id, n); e.oylar[n]++;
+    halayaKat(r, true); ziplat(r);
+    return;
+  }
   if (e.tip === 'hop' && w.some((x) => HOP.has(x))) {
     e.sayac++; e.kisiler.add(r.id); dalga();
     if (!e.tamam && e.sayac >= e.hedef) {
@@ -1226,6 +1273,21 @@ function etkinlikCiz(c, t) {
   const a = Math.min(1, (t - e.basla) / 0.3, (e.bitis - t) / 0.3);
   c.save(); c.globalAlpha = Math.max(0, a);
   cam(c, 60, y, 960, h, 30, 0.86);
+  if (e.tip === 'secim') {
+    yazi(c, 'SIRADAKİ OYUNU SEÇ', 90, y + 40, 32, SARI, { hiza: 'left', golge: true });
+    yazi(c, `${Math.max(0, Math.ceil(e.bitis - t))} sn · numarasını yaz`, 990, y + 40, 26, LILA, { hiza: 'right' });
+    const n = e.adaylar.length, gw = (900 - (n - 1) * 12) / n, top = Math.max(1, e.oylar.reduce((a, b) => a + b, 0));
+    e.adaylar.forEach((j, k) => {
+      const x = 90 + k * (gw + 12), oran = e.oylar[k] / top;
+      kutu(c, x, y + 56, gw, 46, 23, 'rgba(27,16,64,0.85)');
+      if (e.oylar[k]) kutu(c, x + 3, y + 59, Math.max(40, (gw - 6) * oran), 40, 20, [SARI, CAMGOBEGI, PEMBE][k]);
+      daire(c, x + 23, y + 79, 17, BEYAZ); yazi(c, String(k + 1), x + 23, y + 88, 26, INK);
+      yazi(c, OYUNLAR[SIRA[j]].baslik, x + 48, y + 88, 22, BEYAZ, { hiza: 'left', maxW: gw - 100, golge: true });
+      yazi(c, String(e.oylar[k]), x + gw - 14, y + 88, 24, BEYAZ, { hiza: 'right', golge: true });
+    });
+    c.restore();
+    return;
+  }
   const baslik = { kostum: 'KOSTÜM ZAMANI', hop: 'HOP DALGASI', dugun: 'DÜĞÜN VAR!', memleket: 'NEREDEN İZLİYORSUN?', paylas: 'ARKADAŞINI ÇAĞIR' }[e.tip];
   const alt = { kostum: 'yaz: GELİN · DAMAT · SAĞDIÇ · KIZ · ERKEK · HAMAM BÖCEĞİ', hop: 'herkes HOP yazsın', dugun: e.gelin && e.damat ? `${kisalt(e.gelin.ad, 12)} ♥ ${kisalt(e.damat.ad, 12)}` : 'GELİN ya da DAMAT yaz, giyin!', memleket: 'şehrini ya da plakanı yaz', paylas: 'PAYLAŞ butonuna bas' }[e.tip];
   yazi(c, baslik, 90, y + 46, 38, e.tip === 'kostum' || e.tip === 'dugun' ? PEMBE : SARI, { hiza: 'left', golge: true, maxW: 560 });
@@ -1401,6 +1463,7 @@ function olay(e) {
       let komut = w.some((x) => GIR.has(x) || HOP.has(x) || SELAM.has(x) || /^[1-3]$/.test(x));
       const rol = rolBul(w);
       if (rol) { rolAta(r, rol); komut = true; }
+      if (/dogumgunum|dogumgunumuz|bugundogumgunum/.test(sade(m))) dogumGunu(r);
       if (tip === 'halay') {
         if (w.some((x) => GIR.has(x) || HOP.has(x))) { halayaKat(r); ziplat(r); }
         else if (w.some((x) => SELAM.has(x))) {
@@ -1642,9 +1705,9 @@ const OYUNLAR = {
     ciz: () => futbolCiz(),
   },
   bilgi: {
-    tip: 'soru', baslik: 'BİLGİ YARIŞMASI', kisa: 'bilgi yarışması', adet: 5, sure: 16, altBaslik: 'A, B ya da C yaz!',
-    acilis: 'Bilgi yarışması başlıyor! Doğru şıkkın harfini yoruma yaz: A, B ya da C. İlk bilen üç puan alır, diğer bilenler bir puan!',
-    satirlar: [[['A · B · C', 'yaz, cevap ver'], ['', 'tek hakkın var']], [['İLK BİLEN', '+3'], ['DOĞRU', '+1'], ['HEDİYE', 'ipucu, süre']]],
+    tip: 'soru', baslik: 'BİLGİ YARIŞMASI', kisa: 'bilgi yarışması', adet: 5, sure: 16, altBaslik: 'Doğru şıkkın harfini yaz!',
+    acilis: 'Bilgi yarışması başlıyor! Doğru şıkkın harfini yoruma yaz. İlk bilen üç puan alır, diğer bilenler bir puan!',
+    satirlar: [[['A · B · C · D', 'şıkkı yaz'], ['', 'tek hakkın var']], [['İLK BİLEN', '+3'], ['DOĞRU', '+1'], ['HEDİYE', 'ipucu, süre']]],
     hatirlatma: ['Doğru şıkkın harfini yoruma yaz!', 'İlk bilen üç puan alıyor!', 'Hediye atan herkese ipucu ya da ek süre açıyor.'],
     uret: bilgiSorusu, ciz: () => soruCiz(),
   },
@@ -1929,7 +1992,7 @@ function takimOyunuBitir(k) {
   }
 }
 function turBaslat(tur) {
-  S.oyun = null; S.soru = null; S.mem = null; S.etk = null; S.sonrakiEtk = zaman() + 45;
+  S.oyun = null; S.soru = null; S.mem = null; S.etk = null; S.sonrakiEtk = zaman() + 25; S.oySecimi = false;
   S.turNo++;
   S.altinTur = false;
   if (tur !== 'halay' && OYUNLAR[tur]) {
@@ -2153,9 +2216,9 @@ Object.assign(OYUNLAR, {
     ciz: () => kartopuCiz(),
   },
   bayrak: {
-    tip: 'soru', baslik: 'BAYRAK BİL', kisa: 'bayrak bil', adet: 5, sure: 15, altBaslik: 'A, B ya da C yaz!',
-    acilis: 'Bayrak bil! Ekrandaki bayrak hangi ülkenin? Doğru şıkkın harfini yaz: A, B ya da C.',
-    satirlar: [[['A · B · C', 'yaz, cevap ver'], ['', 'tek hakkın var']], [['İLK BİLEN', '+3'], ['DOĞRU', '+1'], ['HEDİYE', 'ipucu, süre']]],
+    tip: 'soru', baslik: 'BAYRAK BİL', kisa: 'bayrak bil', adet: 5, sure: 15, altBaslik: 'Doğru şıkkın harfini yaz!',
+    acilis: 'Bayrak bil! Ekrandaki bayrak hangi ülkenin? Doğru şıkkın harfini yoruma yaz.',
+    satirlar: [[['A · B · C · D', 'şıkkı yaz'], ['', 'tek hakkın var']], [['İLK BİLEN', '+3'], ['DOĞRU', '+1'], ['HEDİYE', 'ipucu, süre']]],
     hatirlatma: ['Bayrak hangi ülkenin? Harfini yaz!', 'İlk bilen üç puan alıyor!', 'Hediye atan bir yanlış şıkkı siliyor.'],
     uret: () => bayrakSorusu(), ciz: () => soruCiz(),
   },
@@ -2221,24 +2284,33 @@ function yeniSec(anahtar, liste) {
   return liste[i];
 }
 
+// Sayısal cevaplı sorulara doğru cevaba çok yakın bir dördüncü şık eklenir (soruyu zorlaştırır, yanlışlıkla doğru olamaz)
+function sayiYakin(d, mevcut) {
+  const n = Number(d), yil = n >= 1000 && n <= 2100;
+  const adaylar = yil ? [n - 1, n + 1, n - 2, n + 2, n - 3, n + 3, n - 5, n + 5] : n <= 12 ? [n - 1, n + 1, n + 2, n - 2] : [n - 1, n + 1, n - 2, n + 2, Math.round(n * 1.1), Math.round(n * 0.9)];
+  const uygun = adaylar.filter((x) => x > 0 && !mevcut.includes(String(x)));
+  return uygun.length ? String(rastgele(uygun)) : null;
+}
+const HARF = 'ABCD';
+function sikOku(s, giris, soz = (x) => x) { s.oku = `${giris} ` + s.secenekler.map((x, i) => `${HARF[i]}: ${soz(x)}.`).join(' '); return s; }
 function secenekSorusu(metin, ops, ek = {}) {
-  const sira = karistir([0, 1, 2]);
+  ops = ops.map(String);
+  if (ops.length === 3 && ops.every((x) => /^\d+$/.test(x))) { const y = sayiYakin(ops[0], ops); if (y) ops.push(y); }
+  const sira = karistir([...ops.keys()]);
   const secenekler = sira.map((i) => ops[i]);
   const dogru = sira.indexOf(0);
-  const harf = 'ABC'[dogru];
-  return {
+  const harf = HARF[dogru];
+  return sikOku({
     tur: 'secenek', cizim: 'secenek', metin, secenekler, dogru, gorunen: `${harf}: ${ops[0]}`,
-    oku: `{n}. soru: ${metin} A: ${secenekler[0]}. B: ${secenekler[1]}. C: ${secenekler[2]}.`,
     cevapOku: `Doğru cevap ${harf}: ${ops[0]}!`, ...ek,
-  };
+  }, `{n}. soru: ${metin}`);
 }
 function bilgiSorusu() { const [metin, ...ops] = yeniSec('bilgi', BILGI); return secenekSorusu(metin, ops); }
 function bayrakSorusu() {
   const b = yeniSec('bayrak', BAYRAKLAR);
-  const yanlis = karistir(BAYRAKLAR.filter((x) => x !== b)).slice(0, 2).map((x) => x.ad);
+  const yanlis = karistir(BAYRAKLAR.filter((x) => x !== b)).slice(0, 3).map((x) => x.ad);
   const s = secenekSorusu('Bu hangi ülkenin bayrağı?', [b.ad, ...yanlis], { cizim: 'bayrak', bayrak: b });
-  s.oku = `{n}. bayrak! Bu hangi ülkenin bayrağı? A: ${s.secenekler[0]}. B: ${s.secenekler[1]}. C: ${s.secenekler[2]}.`;
-  return s;
+  return sikOku(s, '{n}. bayrak! Bu hangi ülkenin bayrağı?');
 }
 function kelimeSorusu() {
   const [kategori, kelime] = yeniSec('kelime', KELIMELER);
@@ -2251,15 +2323,18 @@ function kelimeSorusu() {
   };
 }
 function matematikSorusu() {
-  const tip = rastgele(['+', '+', '-', '×', '×']);
-  let a, b, sonuc;
-  if (tip === '+') { a = 11 + rnd(78); b = 11 + rnd(78); sonuc = a + b; }
-  else if (tip === '-') { a = 30 + rnd(69); b = 10 + rnd(a - 15); sonuc = a - b; }
-  else { a = 3 + rnd(10); b = 3 + rnd(10); sonuc = a * b; }
-  const sozel = { '+': 'artı', '-': 'eksi', '×': 'çarpı' }[tip];
+  const tip = rastgele(['+', '-', '×', '×', '÷', 'k']);
+  let a, b, c = 0, sonuc;
+  if (tip === '+') { a = 100 + rnd(800); b = 11 + rnd(189); sonuc = a + b; }
+  else if (tip === '-') { a = 200 + rnd(700); b = 11 + rnd(a - 60); sonuc = a - b; }
+  else if (tip === '×') { a = 6 + rnd(14); b = 3 + rnd(10); sonuc = a * b; }
+  else if (tip === '÷') { b = 3 + rnd(10); sonuc = 4 + rnd(16); a = b * sonuc; }
+  else { a = 3 + rnd(9); b = 3 + rnd(9); c = 5 + rnd(45); sonuc = a * b + c; }
+  const ifade = tip === 'k' ? `${a} × ${b} + ${c} = ?` : `${a} ${tip === '-' ? '−' : tip} ${b} = ?`;
+  const oku = tip === 'k' ? `${a} çarpı ${b}, artı ${c} kaç eder?` : `${a} ${{ '+': 'artı', '-': 'eksi', '×': 'çarpı', '÷': 'bölü' }[tip]} ${b} kaç eder?`;
   return {
-    tur: 'sayi', cizim: 'buyuk', ifade: `${a} ${tip === '-' ? '−' : tip} ${b} = ?`, dogru: sonuc, gorunen: String(sonuc),
-    oku: `${a} ${sozel} ${b} kaç eder?`, cevapOku: `Cevap ${sonuc}!`, ipucuMetin: `Son rakamı ${sonuc % 10}`,
+    tur: 'sayi', cizim: 'buyuk', ifade, dogru: sonuc, gorunen: String(sonuc),
+    oku, cevapOku: `Cevap ${sonuc}!`, ipucuMetin: `Son rakamı ${sonuc % 10}`,
   };
 }
 function atasozuSorusu() {
@@ -2277,7 +2352,7 @@ function dyCumlesi() {
   };
 }
 function hafizaSorusu() {
-  const uzunluk = [4, 5, 5, 6, 6, 7][Math.min(5, S.soru.idx - 1)];
+  const uzunluk = [5, 6, 6, 7, 7, 8][Math.min(5, S.soru.idx - 1)];
   let rakamlar = '';
   for (let i = 0; i < uzunluk; i++) rakamlar += String(1 + rnd(9));
   const okunus = rakamlar.split('').join(' ');
@@ -2299,11 +2374,11 @@ function renkSorusu() {
 const SEKILLER = [{ ad: 'SARI YILDIZ', sekil: 'yildiz', renk: SARI }, { ad: 'PEMBE KALP', sekil: 'kalp', renk: PEMBE }, { ad: 'MAVİ DAİRE', sekil: 'daire', renk: CAMGOBEGI }];
 function kacTaneSorusu() {
   const hedef = rastgele(SEKILLER);
-  const n = 6 + rnd(10);
+  const n = 10 + rnd(12);
   const hucre = karistir([...Array(40).keys()]);
   const sekiller = [];
   for (let i = 0; i < n; i++) sekiller.push({ sekil: hedef.sekil, renk: hedef.renk, h: hucre[i] });
-  const sasirt = 6 + rnd(8);
+  const sasirt = 10 + rnd(9);
   for (let j = 0; j < sasirt; j++) {
     const diger = rastgele(SEKILLER.filter((x) => x !== hedef));
     // aynı şekil başka renk ya da aynı renk başka şekil: dikkatli saymak gerekiyor
@@ -2337,18 +2412,21 @@ function soruOyunuBaslat(tur) {
   // soru sayısı sabit değil: oyun toplam 4 dakika sürer, süre dolana kadar soru gelir
   const oyunBitis = t0 + SURE.toplam - SURE.sonuc - 1;
   S.soru = {
-    tur, def, idx: 0, toplam: Math.max(3, Math.floor((SURE.toplam - SURE.sonuc - 6) / ((def.sure || 16) + 5))), oyunBitis,
+    tur, def, idx: 0, toplam: Math.max(3, Math.floor((SURE.toplam - SURE.sonuc - 6) / (soruSuresi(def) + 5))), oyunBitis,
     asama: 'giris', basla: t0, bitis: t0 + 5, soru: null, dogrular: [], cevaplayan: new Map(),
     puan: new Map(), cift: 1, ipucu: 0, elenen: new Set(), oylar: [0, 0], sonuclar: [], gizlendi: false, sonTik: 0, sonrakiCift: false,
   };
   Spiker.ekle(def.acilis, 4, 'tur');
 }
+// Sorular zorlaştığı için düşünme süresi eskisinin 1,5 katı
+const SURE_KAT = 1.5;
+function soruSuresi(def, soru) { return Math.round(((soru && soru.sure) || def.sure || 16) * SURE_KAT); }
 function soruSonraki() {
   const q = S.soru, t = zaman();
-  q.idx++;
+  q.idx++; q.uzatildi = false;
   q.dogrular = []; q.cevaplayan = new Map(); q.cift = (S.altinTur ? 2 : 1) * (q.sonrakiCift ? 2 : 1); q.sonrakiCift = false; q.ipucu = 0; q.elenen = new Set(); q.oylar = [0, 0]; q.gizlendi = false; q.sonTik = 0;
   q.soru = q.def.uret();
-  q.sure = q.soru.sure || q.def.sure;
+  q.sure = soruSuresi(q.def, q.soru);
   q.asama = 'soru'; q.basla = t; q.bitis = t + q.sure;
   if (q.soru.oku) Spiker.ekle(q.soru.oku.replace('{n}', q.idx), 4, 'soru');
   Ses.basla();
@@ -2360,10 +2438,19 @@ function soruGuncelle() {
     if (q.soru.gosterSure && !q.gizlendi && t >= q.basla + q.soru.gosterSure) { q.gizlendi = true; Ses.sayim(); Spiker.ekle('Şimdi yaz!', 3, 'gizle'); }
     const kalan = q.bitis - t;
     if (kalan <= 3 && kalan > 0 && Math.ceil(kalan) !== q.sonTik) { q.sonTik = Math.ceil(kalan); Ses.sayim(); }
-    if (t >= q.bitis || (q.def.ilkN && q.dogrular.length >= q.def.ilkN)) cevapGoster();
+    const s = q.soru;
+    // kimse bilemediyse bir kereliğine ek süre: zor soruda biraz beklenir
+    const uzatilir = t >= q.bitis && !q.uzatildi && !q.dogrular.length && !q.def.anket && s.tur !== 'anket' && !(s.tur === 'yazi' && !s.tekKelime && !s.gecerli) && t + 10 < q.oyunBitis;
+    if (uzatilir) {
+      q.uzatildi = true;
+      const ek = Math.max(8, Math.round(q.sure * 0.5));
+      q.bitis = t + ek; q.sonTik = 0;
+      duyuru('ZOR SORU!', `Henüz bilen yok · ${ek} saniye ek süre`, LILA, 2, 1);
+      Spiker.ekle(rastgele([`Zor soru! Henüz kimse bilemedi, ${ek} saniye daha düşünün!`, `Bu soru zor geldi! ${ek} saniye ek süre veriyorum!`, `Bilen çıkmadı, biraz bekliyoruz! ${ek} saniye daha!`]), 3, 'uzat');
+    } else if (t >= q.bitis || (q.def.ilkN && q.dogrular.length >= q.def.ilkN)) cevapGoster();
   } else if (q.asama === 'cevap' && t >= q.bitis) {
     // bir soru daha sığmıyorsa tur biter
-    if (t + (q.def.sure || 16) + 3 > q.oyunBitis) soruTurBitir(); else soruSonraki();
+    if (t + soruSuresi(q.def) + 3 > q.oyunBitis) soruTurBitir(); else soruSonraki();
   } else if (q.asama === 'sonuc' && t >= q.bitis) sonrakiTur();
 }
 function puanEkle(r, n) {
@@ -2410,9 +2497,10 @@ function soruYorum(r, m, w) {
   if (s.gosterSure && t < q.basla + s.gosterSure) return; // sayılar ekrandayken cevap sayılmaz
   let cevap;
   if (s.tur === 'secenek') {
-    const h = [...new Set(w.filter((x) => x === 'a' || x === 'b' || x === 'c'))];
+    const harfler = 'abcd'.slice(0, s.secenekler.length);
+    const h = [...new Set(w.filter((x) => x.length === 1 && harfler.includes(x)))];
     if (h.length !== 1) return;
-    cevap = 'abc'.indexOf(h[0]);
+    cevap = harfler.indexOf(h[0]);
     if (q.elenen.has(cevap)) return;
   } else if (s.tur === 'dy') {
     const d = w.some((x) => x === 'd' || sade(x) === 'dogru'), y = w.some((x) => x === 'y' || sade(x) === 'yanlis');
@@ -2456,6 +2544,15 @@ function soruYorum(r, m, w) {
 function dogruBildi(q, r) {
   q.dogrular.push(r);
   xpEkle(r, q.dogrular.length === 1 ? 8 : 5);
+  // üst üste bilenler seri yapar
+  q.seri = q.seri || new Map();
+  const onceki = q.seri.get(r.id);
+  const n = onceki && onceki.son === q.idx - 1 ? onceki.n + 1 : onceki && onceki.son === q.idx ? onceki.n : 1;
+  q.seri.set(r.id, { son: q.idx, n });
+  if ((n === 3 || n === 5 || n === 7 || n === 10) && (!onceki || onceki.n !== n)) {
+    tost(`${r.ad} ${n} soru üst üste bildi!`, r, 'hediye'); xpEkle(r, n);
+    Spiker.ekle(`${okunurAd(r.ad)} üst üste ${n} soru bildi! Durdurun bunu!`, 2, 'seri', 6);
+  }
   if (q.def.ilkN) {
     const sira = q.dogrular.length;
     const puan = ([3, 2, 1][sira - 1] || 0) * q.cift;
@@ -2480,7 +2577,7 @@ function soruHediye(r, elmas, k, ad, hediyeAdi) {
   if (k === 1 && !ipucuYok) {
     q.ipucu++;
     if (q.soru.tur === 'secenek') {
-      const yanlis = [0, 1, 2].filter((i) => i !== q.soru.dogru && !q.elenen.has(i));
+      const yanlis = [...q.soru.secenekler.keys()].filter((i) => i !== q.soru.dogru && !q.elenen.has(i));
       if (yanlis.length > 1) q.elenen.add(rastgele(yanlis));
     }
     duyuru('İPUCU!', r.ad, CAMGOBEGI, 1.4, 1);
@@ -3220,16 +3317,16 @@ function cevapRozeti(c, metin, y) {
 function secenekCiz(c, q, s, ic, t, cevap) {
   let yy = ic.y;
   if (s.cizim === 'bayrak') {
-    const bh = Math.min(230, ic.h - 3 * 96), bw = bh * 1.5;
+    const bh = Math.min(230, ic.h - s.secenekler.length * 96), bw = bh * 1.5;
     bayrakCiz(c, s.bayrak, 540 - bw / 2, ic.y + 6, bw, bh);
     yy = ic.y + bh + 30;
   } else if (s.cizim === 'saat') {
-    const r = Math.min(130, (ic.h - 3 * 96) / 2);
+    const r = Math.min(130, (ic.h - s.secenekler.length * 96) / 2);
     saatCiz(c, 540, ic.y + 10 + r, r, s.saat.h, s.saat.m);
     yy = ic.y + 2 * r + 36;
   } else if (s.cizim === 'emoji') {
     yazi(c, s.metin, 540, ic.y + 44, 40, LILA, { w: 700, maxW: ic.w - 40 });
-    const eh = Math.min(210, ic.h - 3 * 96 - 60);
+    const eh = Math.min(210, ic.h - s.secenekler.length * 96 - 60);
     yazi(c, s.emoji, 540, ic.y + 70 + eh * 0.82, eh * 0.78, BEYAZ, { maxW: ic.w - 40 });
     yy = ic.y + 90 + eh;
   } else if (s.cizim === 'encok') {
@@ -3240,9 +3337,9 @@ function secenekCiz(c, q, s, ic, t, cevap) {
     const son = paragraf(c, s.metin, 540, ic.y + 52, 50, BEYAZ, ic.w - 20, { maxSatir: 3 });
     yy = son + 40;
   }
-  const kalan = ic.y + ic.h - yy;
-  const sh = Math.min(92, (kalan - 24) / 3);
-  const say = [0, 0, 0];
+  const kalan = ic.y + ic.h - yy, n = s.secenekler.length;
+  const sh = Math.min(92, (kalan - 24) / n - 12 * (n - 3) / n);
+  const say = new Array(n).fill(0);
   for (const v of q.cevaplayan.values()) if (typeof v === 'number') say[v]++;
   s.secenekler.forEach((ad, i) => {
     const y = yy + i * (sh + 12);
@@ -3250,8 +3347,8 @@ function secenekCiz(c, q, s, ic, t, cevap) {
     c.globalAlpha = elendi || (cevap && !dogru) ? 0.35 : 1;
     kutu(c, ic.x + 20, y, ic.w - 40, sh, sh / 2, dogru ? YESIL : 'rgba(255,255,255,0.12)');
     daire(c, ic.x + 20 + sh / 2, y + sh / 2, sh / 2 - 8, dogru ? INK : SARI);
-    yazi(c, 'ABC'[i], ic.x + 20 + sh / 2, y + sh / 2 + 14, 40, dogru ? YESIL : INK);
-    yazi(c, ad, ic.x + 20 + sh + 16, y + sh / 2 + 14, 40, dogru ? INK : BEYAZ, { hiza: 'left', maxW: ic.w - sh - 200 });
+    yazi(c, HARF[i], ic.x + 20 + sh / 2, y + sh / 2 + 14, Math.min(40, sh * 0.45), dogru ? YESIL : INK);
+    yazi(c, ad, ic.x + 20 + sh + 16, y + sh / 2 + 14, Math.min(40, sh * 0.45), dogru ? INK : BEYAZ, { hiza: 'left', maxW: ic.w - sh - 200 });
     if (cevap) yazi(c, `${say[i]} kişi`, ic.x + ic.w - 44, y + sh / 2 + 12, 32, dogru ? INK : LILA, { hiza: 'right', w: 600 });
     if (elendi) cizgi(c, [[ic.x + 40, y + sh / 2], [ic.x + ic.w - 60, y + sh / 2]], 6, PEMBE);
     c.globalAlpha = 1;
@@ -3534,12 +3631,12 @@ function memleketCiz() {
 
 // ------------------------------------------------------------------ 3. paket: 27 yeni oyun (çoğu bilgi yarışması)
 const SQ = window.HP_SORULAR || {};
-const SATIR_SECENEK = [[['A · B · C', 'yaz, cevap ver'], ['', 'tek hakkın var']], [['İLK BİLEN', '+3'], ['DOĞRU', '+1'], ['HEDİYE', 'ipucu, süre']]];
+const SATIR_SECENEK = [[['A · B · C · D', 'şıkkı yaz'], ['', 'tek hakkın var']], [['İLK BİLEN', '+3'], ['DOĞRU', '+1'], ['HEDİYE', 'ipucu, süre']]];
 const SATIR_YAZI = (ust) => [[ust], [['1.', '+3'], ['2.', '+2'], ['3.', '+1'], ['HEDİYE', 'ipucu']]];
 function bilgiOyunu(anahtar, baslik, kisa, ad, uret, ek = {}) {
   return {
-    tip: 'soru', baslik, kisa, adet: 5, sure: 16, altBaslik: 'A, B ya da C yaz!',
-    acilis: `${ad} başlıyor! Doğru şıkkın harfini yoruma yaz: A, B ya da C. İlk bilen üç puan alır!`,
+    tip: 'soru', baslik, kisa, adet: 5, sure: 16, altBaslik: 'Doğru şıkkın harfini yaz!',
+    acilis: `${ad} başlıyor! Doğru şıkkın harfini yoruma yaz. İlk bilen üç puan alır!`,
     satirlar: SATIR_SECENEK,
     hatirlatma: ['Doğru şıkkın harfini yoruma yaz!', 'İlk bilen üç puan alıyor!', 'Hediye atan bir yanlış şıkkı siliyor.'],
     uret, ciz: () => soruCiz(), ...ek,
@@ -3564,16 +3661,16 @@ const iki = (n) => String(n).padStart(2, '0');
 function plakaSorusu() {
   const i = rnd(81), ad = SEHIRLER[i], pl = i + 1;
   if (Math.random() < 0.5) {
-    const yanlis = karistir(SEHIRLER.filter((x) => x !== ad)).slice(0, 2);
+    const yanlis = karistir(SEHIRLER.filter((x) => x !== ad)).slice(0, 3);
     return secenekSorusu(`Plakası ${iki(pl)} olan il hangisidir?`, [ad, ...yanlis]);
   }
-  const yakin = karistir([...Array(81).keys()].map((x) => x + 1).filter((x) => x !== pl && Math.abs(x - pl) <= 12)).slice(0, 2);
+  const yakin = karistir([...Array(81).keys()].map((x) => x + 1).filter((x) => x !== pl && Math.abs(x - pl) <= 12)).slice(0, 3);
   return secenekSorusu(`${ad} ilinin plaka kodu kaçtır?`, [iki(pl), ...yakin.map(iki)]);
 }
 function bolgeSorusu() {
   const bolgeler = Object.keys(BOLGELER);
   const b = rastgele(bolgeler), il = rastgele(BOLGELER[b]);
-  const yanlis = karistir(bolgeler.filter((x) => x !== b)).slice(0, 2);
+  const yanlis = karistir(bolgeler.filter((x) => x !== b)).slice(0, 3);
   return secenekSorusu(`${il} hangi bölgemizdedir?`, [b, ...yanlis]);
 }
 function saatYazi(h, m) { return `${h}:${iki(m)}`; }
@@ -3585,15 +3682,16 @@ function saatSorusu() {
   adaylar.add(saatYazi(h, (m + 15) % 60));
   adaylar.add(saatYazi(h === 12 ? 1 : h + 1, m));
   adaylar.add(saatYazi(h === 1 ? 12 : h - 1, (m + 30) % 60));
-  const yanlis = karistir([...adaylar].filter((x) => x !== dogru)).slice(0, 2);
+  adaylar.add(saatYazi(h, (m + 5) % 60));
+  const yanlis = karistir([...adaylar].filter((x) => x !== dogru)).slice(0, 3);
   const s = secenekSorusu('Saat kaç?', [dogru, ...yanlis], { cizim: 'saat', saat: { h, m } });
   const soz = (x) => { const [a, b] = x.split(':'); return b === '00' ? `${a}` : `${a} ${Number(b)}`; };
-  s.oku = `{n}. soru: Saat kaç? A: ${soz(s.secenekler[0])}. B: ${soz(s.secenekler[1])}. C: ${soz(s.secenekler[2])}.`;
-  return s;
+  return sikOku(s, '{n}. soru: Saat kaç?', soz);
 }
 function enCokSorusu() {
   let say;
-  do { say = [5 + rnd(8), 5 + rnd(8), 5 + rnd(8)]; } while (new Set(say).size < 3);
+  const taban = 6 + rnd(5);
+  do { say = [taban + rnd(4), taban + rnd(4), taban + rnd(4)]; } while (new Set(say).size < 3);
   const hucre = karistir([...Array(40).keys()]);
   const sekiller = [];
   let n = 0;
@@ -3601,17 +3699,21 @@ function enCokSorusu() {
   const ad = ['YILDIZ', 'KALP', 'DAİRE'];
   const enb = say.indexOf(Math.max(...say));
   const s = secenekSorusu('Hangisinden en çok var?', [ad[enb], ...ad.filter((_, i) => i !== enb)], { cizim: 'encok', sekiller });
-  s.cevapOku = `Doğru cevap ${'ABC'[s.dogru]}: ${ad[enb].toLocaleLowerCase('tr')}, tam ${say[enb]} tane!`;
+  s.cevapOku = `Doğru cevap ${HARF[s.dogru]}: ${ad[enb].toLocaleLowerCase('tr')}, tam ${say[enb]} tane!`;
   return s;
 }
 function diziSorusu() {
-  const tip = rnd(5);
+  const tip = rnd(9);
   let d = [];
   if (tip === 0) { const a = 1 + rnd(20), k = 2 + rnd(8); for (let i = 0; i < 6; i++) d.push(a + i * k); }
   else if (tip === 1) { const a = 1 + rnd(5), k = rastgele([2, 2, 3]); for (let i = 0; i < 6; i++) d.push(a * k ** i); }
   else if (tip === 2) { const a = 1 + rnd(5); for (let i = 0; i < 6; i++) d.push((a + i) ** 2); }
   else if (tip === 3) { const x = 2 + rnd(4), y = 6 + rnd(5); let v = 1 + rnd(10); for (let i = 0; i < 6; i++) { d.push(v); v += i % 2 ? y : x; } }
-  else { let a = 1 + rnd(3), b = a + 1 + rnd(2); d = [a, b]; while (d.length < 6) d.push(d[d.length - 1] + d[d.length - 2]); }
+  else if (tip === 4) { let a = 1 + rnd(3), b = a + 1 + rnd(2); d = [a, b]; while (d.length < 6) d.push(d[d.length - 1] + d[d.length - 2]); }
+  else if (tip === 5) { let v = 1 + rnd(5); for (let i = 0; i < 6; i++) { d.push(v); v = v * 2 + 1; } }
+  else if (tip === 6) { let v = 2 + rnd(6), k = 1 + rnd(3); for (let i = 0; i < 6; i++) { d.push(v); v += k; k += 2; } }
+  else if (tip === 7) { let v = 2 + rnd(5); const ek = 1 + rnd(4); for (let i = 0; i < 6; i++) { d.push(v); v = i % 2 ? v + ek : v * 2; } }
+  else { const a = 1 + rnd(3); for (let i = 0; i < 6; i++) d.push((a + i) ** 3); }
   const goster = d.slice(0, 5).join(', ') + ', ?';
   return {
     tur: 'sayi', cizim: 'buyuk', ifade: goster, dogru: d[5], gorunen: String(d[5]), ipucuMetin: `Son rakamı ${d[5] % 10}`,
@@ -3621,14 +3723,14 @@ function diziSorusu() {
 function eksikHarfSorusu() {
   const kelime = yeniSec('eksik', SQ.kelimeler || ['HALAY']);
   const harfler = [...kelime];
-  const gizle = karistir(harfler.map((_, i) => i).filter((i) => i > 0)).slice(0, Math.max(2, Math.round(harfler.length * 0.4)));
+  const gizle = karistir(harfler.map((_, i) => i).filter((i) => i > 0)).slice(0, Math.max(3, Math.round(harfler.length * 0.5)));
   return {
     tur: 'yazi', tekKelime: true, cizim: 'eksik', kelime, harfler, gizli: gizle.sort((a, b) => a - b), dogru: sade(kelime), gorunen: kelime,
     oku: `{n}. kelime! Eksik harfleri tamamla, kelimeyi yaz!`, cevapOku: `Doğru cevap: ${kelime.toLocaleLowerCase('tr')}!`, sure: 20,
   };
 }
 function terstenSorusu() {
-  const kelime = yeniSec('tersten', SQ.kelimeler || ['HALAY']);
+  const kelime = yeniSec('tersten', uzunKelimeler(7));
   const ters = [...kelime].reverse().join('');
   return {
     tur: 'yazi', tekKelime: true, cizim: 'buyuk', ifade: ters, cevapIfade: kelime, dogru: sade(kelime), gorunen: kelime, ipucuMetin: `İlk harfi ${kelime[0]}`,
@@ -3734,12 +3836,14 @@ Object.assign(OYUNLAR, {
 
 // ------------------------------------------------------------------ 100 oyuna çıkan yeni oyunlar: soru üreticileri
 function ikiYanlis(liste, dogru, haric = []) { return karistir([...new Set(liste)].filter((x) => x !== dogru && !haric.includes(x))).slice(0, 2); }
+function ucYanlis(liste, dogru, haric = []) { return karistir([...new Set(liste)].filter((x) => x !== dogru && !haric.includes(x))).slice(0, 3); }
+function uzunKelimeler(min) { const L = SQ.kelimeler || ['HALAY']; const u = L.filter((w) => [...w].length >= min); return u.length >= 8 ? u : L; }
 function ciftOku(s) { s.oku = s.oku.replace(/(\d{1,2}):(\d\d)/g, (m0, a, b) => (b === '00' ? a : `${a} ${Number(b)}`)); return s; }
 function edebiyatSorusu() {
   const L = SQ.edebiyat || [['Çalıkuşu', 'Reşat Nuri Güntekin']];
   const e = yeniSec('edebiyat', L);
   const grup = L.filter((x) => !!x[2] === !!e[2]).map((x) => x[1]);
-  return secenekSorusu(`"${e[0]}" kimin eseridir?`, [e[1], ...ikiYanlis(grup, e[1])]);
+  return secenekSorusu(`"${e[0]}" kimin eseridir?`, [e[1], ...ucYanlis(grup, e[1])]);
 }
 function meshurSorusu() {
   const L = SQ.meshur || [['Kaymak', 'Afyonkarahisar']];
@@ -3747,31 +3851,31 @@ function meshurSorusu() {
   return secenekSorusu(`${e[0]} denince akla hangi ilimiz gelir?`, [e[1], ...ikiYanlis(L.map((x) => x[1]), e[1])]);
 }
 const KITALAR = ['Avrupa', 'Asya', 'Afrika', 'Kuzey Amerika', 'Güney Amerika', 'Okyanusya'];
-function kitaSorusu() { const e = yeniSec('kitalar', SQ.kitalar || [['Japonya', 'Asya']]); return secenekSorusu(`${e[0]} hangi kıtadadır?`, [e[1], ...ikiYanlis(KITALAR, e[1])]); }
+function kitaSorusu() { const e = yeniSec('kitalar', SQ.kitalar || [['Japonya', 'Asya']]); return secenekSorusu(`${e[0]} hangi kıtadadır?`, [e[1], ...ucYanlis(KITALAR, e[1])]); }
 function paraSorusu() {
   const L = SQ.paralar || [['Japonya', 'Yen']];
   const e = yeniSec('paralar', L);
-  return secenekSorusu(`${e[0]} hangi para birimini kullanır?`, [e[1], ...ikiYanlis(L.map((x) => x[1]), e[1])]);
+  return secenekSorusu(`${e[0]} hangi para birimini kullanır?`, [e[1], ...ucYanlis(L.map((x) => x[1]), e[1])]);
 }
 function hayvanSesSorusu() {
   if (Math.random() < 0.5) {
     const L = SQ.yavrular || [['Koyun', 'Kuzu']];
     const e = yeniSec('yavrular', L);
-    return secenekSorusu(`${e[0]} yavrusuna ne denir?`, [e[1], ...ikiYanlis(L.map((x) => x[1]), e[1])]);
+    return secenekSorusu(`${e[0]} yavrusuna ne denir?`, [e[1], ...ucYanlis(L.map((x) => x[1]), e[1])]);
   }
   const L = SQ.sesler || [['At', 'kişner']];
   const e = yeniSec('sesler', L);
-  return secenekSorusu(`Hangi hayvan ${e[1]}?`, [e[0], ...ikiYanlis(L.map((x) => x[0]), e[0])]);
+  return secenekSorusu(`Hangi hayvan ${e[1]}?`, [e[0], ...ucYanlis(L.map((x) => x[0]), e[0])]);
 }
 function almancaSorusu() {
   const L = SQ.almanca || [['Hund', 'Köpek']];
   const e = yeniSec('almanca', L);
-  return secenekSorusu(`"${e[0]}" ne demek?`, [e[1], ...ikiYanlis(L.map((x) => x[1]), e[1])]);
+  return secenekSorusu(`"${e[0]}" ne demek?`, [e[1], ...ucYanlis(L.map((x) => x[1]), e[1])]);
 }
 function ingilizceTersSorusu() {
   const L = SQ.ingilizce || [['Apple', 'Elma', 'Armut', 'Muz']];
   const e = yeniSec('ingilizce2', L);
-  return secenekSorusu(`"${e[1]}" İngilizcede hangisidir?`, [e[0], ...ikiYanlis(L.map((x) => x[0]), e[0])]);
+  return secenekSorusu(`"${e[1]}" İngilizcede hangisidir?`, [e[0], ...ucYanlis(L.map((x) => x[0]), e[0])]);
 }
 function romen(n) {
   let s = '';
@@ -3780,7 +3884,7 @@ function romen(n) {
 }
 function romenSorusu() {
   const tip = rnd(3);
-  const n = tip === 0 ? 1 + rnd(39) : tip === 1 ? 40 + rnd(460) : 1900 + rnd(127);
+  const n = tip === 0 ? 40 + rnd(460) : tip === 1 ? 500 + rnd(3499) : 1800 + rnd(227);
   const r = romen(n);
   return {
     tur: 'sayi', cizim: 'buyuk', ustYazi: 'Bu Romen rakamı kaç?', ifade: r, cevapIfade: `${r} = ${n}`, dogru: n, gorunen: String(n),
@@ -3788,13 +3892,13 @@ function romenSorusu() {
   };
 }
 function carpimSorusu() {
-  const a = 2 + rnd(11), b = 2 + rnd(11);
+  const a = 6 + rnd(14), b = 6 + rnd(10);
   return { tur: 'sayi', cizim: 'buyuk', ifade: `${a} × ${b} = ?`, dogru: a * b, gorunen: String(a * b), ipucuMetin: `Son rakamı ${(a * b) % 10}`, oku: `${a} çarpı ${b} kaç eder?`, cevapOku: `Cevap ${a * b}!` };
 }
-const YUZDE_EK = { 5: "'i", 10: "'u", 20: "'si", 25: "'i", 30: "'u", 40: "'ı", 50: "'si", 75: "'i" };
+const YUZDE_EK = { 5: "'i", 10: "'u", 12: "'si", 15: "'i", 20: "'si", 25: "'i", 30: "'u", 35: "'i", 40: "'ı", 45: "'i", 50: "'si", 60: "'ı", 75: "'i", 80: "'i", 90: "'ı" };
 function yuzdeSorusu() {
   let pct, taban, sonuc;
-  do { pct = rastgele([5, 10, 20, 25, 30, 40, 50, 75]); taban = rastgele([20, 40, 60, 80, 100, 120, 150, 200, 240, 300, 400, 500, 600, 800, 1000]); sonuc = (taban * pct) / 100; } while (!Number.isInteger(sonuc));
+  do { pct = rastgele([12, 15, 20, 25, 30, 35, 40, 45, 60, 75, 80, 90]); taban = rastgele([60, 80, 120, 140, 160, 180, 220, 240, 260, 320, 360, 440, 480, 520, 640, 720, 840, 900, 1200]); sonuc = (taban * pct) / 100; } while (!Number.isInteger(sonuc));
   const soru = `${taban} sayısının yüzde ${pct}${YUZDE_EK[pct]} kaçtır?`;
   return {
     tur: 'sayi', cizim: 'buyuk', ustYazi: soru, ifade: `%${pct} × ${taban}`, cevapIfade: `%${pct} × ${taban} = ${sonuc}`, dogru: sonuc, gorunen: String(sonuc),
@@ -3804,36 +3908,35 @@ function yuzdeSorusu() {
 const GUNLER = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
 function zamanSorusu() {
   if (Math.random() < 0.5) {
-    const i = rnd(7), n = rastgele([2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 20]);
+    const i = rnd(7), n = rastgele([9, 10, 12, 15, 17, 20, 25, 30, 45, 50, 100]);
     const dogru = GUNLER[(i + n) % 7];
-    return secenekSorusu(`Bugün ${GUNLER[i]}. ${n} gün sonra hangi gün olur?`, [dogru, ...ikiYanlis(GUNLER, dogru)]);
+    return secenekSorusu(`Bugün ${GUNLER[i]}. ${n} gün sonra hangi gün olur?`, [dogru, ...ucYanlis(GUNLER, dogru)]);
   }
-  const h = 7 + rnd(15), m = rastgele([0, 10, 15, 20, 30, 40, 45, 50]), ek = rastgele([15, 20, 25, 30, 40, 45, 50, 70, 75, 90, 100, 120]);
+  const h = 7 + rnd(15), m = rastgele([5, 10, 15, 20, 25, 35, 40, 45, 50, 55]), ek = rastgele([35, 45, 55, 75, 85, 95, 105, 125, 135, 150, 175, 200]);
   const top = h * 60 + m + ek, yaz = (dk) => `${Math.floor(dk / 60) % 24}:${iki(dk % 60)}`;
   const dogru = yaz(top);
-  const yanlis = karistir([...new Set([yaz(top + 10), yaz(top - 10), yaz(top + 60), yaz(top - 60), yaz(top + 5)])].filter((x) => x !== dogru)).slice(0, 2);
+  const yanlis = karistir([...new Set([yaz(top + 10), yaz(top - 10), yaz(top + 60), yaz(top - 60), yaz(top + 5), yaz(top - 5)])].filter((x) => x !== dogru)).slice(0, 3);
   return ciftOku(secenekSorusu(`Saat ${h}:${iki(m)}. ${ek} dakika sonra saat kaç olur?`, [dogru, ...yanlis]));
 }
 function hangisiBuyukSorusu() {
   const uret = () => {
     const t = rnd(3);
-    if (t === 0) { const b = 2 + rnd(9), a = 1 + rnd(b - 1); return { v: a / b, y: `${a}/${b}`, o: `${b}'de ${a}`, tip: 'k' }; }
+    if (t === 0) { const b = 3 + rnd(10), a = 1 + rnd(b - 1); return { v: a / b, y: `${a}/${b}`, o: `${a} bölü ${b}`, tip: 'k' }; }
     const v = (1 + rnd(19)) * 5;
     if (t === 1) return { v: v / 100, y: `0,${String(v).padStart(2, '0').replace(/0$/, '')}`, o: `sıfır virgül ${String(v).padStart(2, '0').replace(/0$/, '')}`, tip: 'o' };
     return { v: v / 100, y: `%${v}`, o: `yüzde ${v}`, tip: 'y' };
   };
   let ops, deneme = 0;
-  do { ops = [uret(), uret(), uret()]; deneme++; } while (deneme < 50 && (ops.some((a, i) => ops.some((b, j) => i < j && Math.abs(a.v - b.v) < 0.04)) || new Set(ops.map((o) => o.tip)).size < 2));
+  do { ops = [uret(), uret(), uret(), uret()]; deneme++; } while (deneme < 80 && (ops.some((a, i) => ops.some((b, j) => i < j && Math.abs(a.v - b.v) < 0.025)) || new Set(ops.map((o) => o.tip)).size < 3));
   const buyukMu = Math.random() < 0.6;
   const sirali = [...ops].sort((a, b) => (buyukMu ? b.v - a.v : a.v - b.v));
   const s = secenekSorusu(`Hangisi en ${buyukMu ? 'büyük' : 'küçük'}?`, sirali.map((o) => o.y));
   const ok = (y) => sirali.find((o) => o.y === y).o;
-  s.oku = `{n}. soru: Hangisi en ${buyukMu ? 'büyük' : 'küçük'}? A: ${ok(s.secenekler[0])}. B: ${ok(s.secenekler[1])}. C: ${ok(s.secenekler[2])}.`;
-  return s;
+  return sikOku(s, `{n}. soru: Hangisi en ${buyukMu ? 'büyük' : 'küçük'}?`, ok);
 }
 function paraUstuSorusu() {
-  const fiyat = 3 + rnd(185);
-  const odenen = [10, 20, 50, 100, 200].find((x) => x > fiyat);
+  const fiyat = 13 + rnd(480);
+  const odenen = [20, 50, 100, 200, 500].find((x) => x > fiyat);
   const ustu = odenen - fiyat;
   return {
     tur: 'sayi', cizim: 'buyuk', ustYazi: `${fiyat} TL'lik alışverişe ${odenen} TL verdin. Para üstü kaç TL?`, ifade: `${odenen} − ${fiyat} = ?`, dogru: ustu, gorunen: String(ustu),
@@ -3857,14 +3960,14 @@ function hecele(w) {
   return heceler;
 }
 function harfSaySorusu() {
-  const w = yeniSec('harfsay', SQ.kelimeler || ['HALAY']), n = [...w].length;
+  const w = yeniSec('harfsay', uzunKelimeler(8)), n = [...w].length;
   return {
     tur: 'sayi', cizim: 'buyuk', ustYazi: 'Bu kelime kaç harfli?', ifade: w, cevapIfade: `${n} HARF`, dogru: n, gorunen: String(n),
     ipucuMetin: n > 7 ? "7'den fazla" : '7 ya da daha az', oku: '{n}. kelime! Ekrandaki kelime kaç harfli?', cevapOku: `Cevap ${n} harf!`, sure: 16,
   };
 }
 function heceSorusu() {
-  const w = yeniSec('hece', SQ.kelimeler || ['HALAY']), heceler = hecele(w), n = heceler.length;
+  const w = yeniSec('hece', uzunKelimeler(8)), heceler = hecele(w), n = heceler.length;
   return {
     tur: 'sayi', cizim: 'buyuk', ustYazi: 'Bu kelime kaç hecelidir?', ifade: w, cevapIfade: heceler.join('-'), dogru: n, gorunen: String(n),
     ipucuMetin: 'Sesli harfleri say', oku: '{n}. kelime! Ekrandaki kelime kaç hecelidir?', cevapOku: `Cevap ${n} hece! ${heceler.join(', ').toLocaleLowerCase('tr')}.`, sure: 16,
@@ -3874,12 +3977,15 @@ const ALFABE = [...'ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ'];
 function alfabeSorusu() {
   const tip = rnd(3);
   if (tip === 2) {
-    const ids = karistir([...ALFABE.keys()]).slice(0, 3), en = Math.min(...ids);
+    // birbirine yakın harfler arasından en önce geleni bulmak
+    const bas = rnd(ALFABE.length - 8), ids = karistir([...Array(8).keys()].map((k) => bas + k)).slice(0, 4), en = Math.min(...ids);
     return secenekSorusu('Hangi harf alfabede daha önce gelir?', [ALFABE[en], ...ids.filter((i) => i !== en).map((i) => ALFABE[i])]);
   }
-  const i = 1 + rnd(ALFABE.length - 2), sonra = tip === 0, dogru = ALFABE[sonra ? i + 1 : i - 1];
-  const adaylar = [ALFABE[sonra ? i - 1 : i + 1], ALFABE[(i + 2) % 29], ALFABE[(i + 27) % 29], ALFABE[(i + 5) % 29]];
-  return secenekSorusu(`Alfabede "${ALFABE[i]}" harfinden ${sonra ? 'sonra' : 'önce'} hangi harf gelir?`, [dogru, ...ikiYanlis(adaylar, dogru, [ALFABE[i]])]);
+  const adim = rastgele([1, 2, 2, 3]);
+  const i = adim + rnd(ALFABE.length - 2 * adim), sonra = tip === 0, dogru = ALFABE[sonra ? i + adim : i - adim];
+  const adaylar = [-3, -2, -1, 1, 2, 3, 4].map((k) => ALFABE[(i + (sonra ? adim : -adim) + k + 29) % 29]);
+  const kac = adim === 1 ? '' : `${adim} harf `;
+  return secenekSorusu(`Alfabede "${ALFABE[i]}" harfinden ${kac}${sonra ? 'sonra' : 'önce'} hangi harf gelir?`, [dogru, ...ucYanlis(adaylar, dogru, [ALFABE[i]])]);
 }
 function dyNesne(metin, dogruMu, oku) {
   return {
@@ -3891,10 +3997,10 @@ function dyBankasi(anahtar) { const [metin, d] = yeniSec(anahtar, SQ[anahtar] ||
 function asalMi(n) { if (n < 2) return false; for (let i = 2; i * i <= n; i++) if (n % i === 0) return false; return true; }
 function sayiDySorusu() {
   const dogruMu = Math.random() < 0.5, tip = rnd(4);
-  if (tip === 0) { let n; do { n = 2 + rnd(98); } while (asalMi(n) !== dogruMu); return dyNesne(`${n} bir asal sayıdır.`, dogruMu); }
-  if (tip === 1) { const k = rastgele([3, 4, 5, 6, 9]); let n; do { n = 12 + rnd(190); } while ((n % k === 0) !== dogruMu); return dyNesne(`${n}, ${k} sayısına tam bölünür.`, dogruMu); }
+  if (tip === 0) { let n; do { n = 21 + rnd(180); } while (asalMi(n) !== dogruMu || (!dogruMu && n % 2 === 0) || (!dogruMu && n % 5 === 0)); return dyNesne(`${n} bir asal sayıdır.`, dogruMu); }
+  if (tip === 1) { const k = rastgele([4, 6, 7, 8, 9, 11, 12]); let n; do { n = 50 + rnd(400); } while ((n % k === 0) !== dogruMu); return dyNesne(`${n}, ${k} sayısına tam bölünür.`, dogruMu); }
   if (tip === 2) {
-    const a = 3 + rnd(10), b = 3 + rnd(10), c = dogruMu ? a * b : a * b + rastgele([-2, -1, 1, 2, a, -b]);
+    const a = 6 + rnd(14), b = 6 + rnd(10), c = dogruMu ? a * b : a * b + rastgele([-2, -1, 1, 2, 10, -10, a, -b]);
     return dyNesne(`${a} × ${b} = ${c}`, dogruMu, `${a} çarpı ${b} eşittir ${c}.`);
   }
   const n = 10 + rnd(190), cift = Math.random() < 0.5;
@@ -3910,8 +4016,7 @@ function sayilarlaSorusu() {
 function emojiSorusu() {
   const [e, ...ops] = yeniSec('emoji', SQ.emoji || [['👰🤵💍', 'Düğün', 'Doğum günü', 'Bayram']]);
   const s = secenekSorusu('Bu emojiler neyi anlatıyor?', ops, { cizim: 'emoji', emoji: e });
-  s.oku = `{n}. bilmece! Ekrandaki emojiler neyi anlatıyor? A: ${s.secenekler[0]}. B: ${s.secenekler[1]}. C: ${s.secenekler[2]}.`;
-  return s;
+  return sikOku(s, '{n}. bilmece! Ekrandaki emojiler neyi anlatıyor?');
 }
 function anketBankasi(anahtar) {
   const [metin, a, b] = yeniSec(anahtar, SQ[anahtar] || ANKETLER);
@@ -4688,6 +4793,8 @@ function cagriCumlesi() {
     `Beğeni hedefine ${kalan.toLocaleString('tr')} beğeni kaldı, ekrana dokunun!`,
     'Her gün gelenin serisi büyüyor. Yarın da bekliyoruz!',
     'Ekrana çift dokunun, beğeni yağmuru başlasın, kalpler yağsın!',
+    'Bugün doğum günün mü? Yoruma doğum günüm yaz, birlikte kutlayalım!',
+    'Halayın sonunda sıradaki oyunu siz seçiyorsunuz, oylamayı kaçırmayın!',
     'Gelin, damat, sağdıç ya da hamam böceği olmak isteyen yoruma yazsın, halayda öyle görünsün!',
     'Oyunlara katıldıkça seviyen yükseliyor, seviyen adının yanında yazıyor!',
     S.davetKrali ? `Davet kralı şu an ${okunurAd(S.davetKrali.ad)}! Paylaş, tacı sen al!` : 'İlk paylaşan davet kralı oluyor!',
@@ -4710,7 +4817,9 @@ function guncelle(dt) {
     const kalan = S.turBitis - t;
     if (kalan < 10 && sonTurKalan >= 10) Spiker.ekle(`On saniye sonra ${siradakiAltinMi() ? 'altın tur, ' : ''}${siradakiAd()} başlıyor!`, 2, 'uyari');
     if (kalan < 60 && sonTurKalan >= 60) Spiker.ekle(`Halayın bitmesine bir dakika var! Sırada ${siradakiAd()} var, hazır olun!`, 1, 'uyari-dk');
-    if (!S.etk && t >= S.sonrakiEtk && kalan > 40 && S.by.asama !== 'aktif') etkinlikBaslat();
+    if (!S.etk && t >= S.sonrakiEtk && kalan > 115 && S.by.asama !== 'aktif') etkinlikBaslat();
+    // halayın sonuna doğru izleyiciler sıradaki oyunu seçer
+    if (!S.etk && !S.oySecimi && kalan <= 80 && kalan > 45) oyunSecimiBaslat();
     if (S.etk && t >= S.etk.bitis) etkinlikBitir();
     sonTurKalan = kalan;
     if (t >= S.turBitis) { sonTurKalan = 99; sonrakiTur(); }
@@ -5327,7 +5436,7 @@ function sunucuyaBaglan() {
 function denemeCevap(s) {
   const bilsin = Math.random() < 0.35;
   if (s.gecerli) return bilsin ? rastgele([...s.gecerli.values()]) : 'bilmem';
-  if (s.tur === 'secenek') return bilsin ? 'abc'[s.dogru] : rastgele(['a', 'b', 'c']);
+  if (s.tur === 'secenek') return bilsin ? 'abcd'[s.dogru] : rastgele([...'abcd'.slice(0, s.secenekler.length)]);
   if (s.tur === 'dy') return (bilsin ? s.dogru : Math.random() < 0.5) ? 'd' : 'y';
   if (s.tur === 'sayi') return bilsin ? String(s.dogru) : String(1 + rnd(99));
   if (s.tur === 'anket') return rastgele(['1', '2', '1']);
@@ -5354,7 +5463,8 @@ function denemeBaslat() {
       else if (r < 0.9) olay({ t: 'begeni', k, n: 1 + Math.floor(Math.random() * 15) });
       else { const [g, e] = rastgele([...kucuk, ...buyukH]); olay({ t: 'hediye', k, ad: g, elmas: e, adet: 1 }); }
     } else if (tip === 'halay') {
-      if (r < 0.22) olay({ t: 'yorum', k, m: rastgele(['gir', 'GİR', 'gir!', 'hop', 'selam', 'hop', 'izmir', '34', 'trabzon']) });
+      if (r < 0.22) olay({ t: 'yorum', k, m: rastgele(['gir', 'GİR', 'gir!', 'hop', 'selam', 'hop', 'izmir', '34', 'trabzon', '1', '2', '3', '2']) });
+      else if (r < 0.222) olay({ t: 'yorum', k, m: 'bugün doğum günüm' });
       else if (r < 0.25) olay({ t: 'yorum', k, m: rastgele(['gelin', 'damat', 'sağdıç', 'hamam böceği', 'kız', 'erkek', 'gelin olayım', 'herkes gelin']) });
       else if (r < 0.255) olay({ t: 'paylasim', k });
       else if (r < 0.32) olay({ t: 'yorum', k, m: rastgele(sohbet) });
